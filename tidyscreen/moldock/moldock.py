@@ -35,6 +35,7 @@ class MolDock:
         if exists == 0:
             options, description = moldock_utils.create_default_params_register(docking_params_db)
             moldock_utils.store_docking_params_register(docking_params_db,options,description)
+            print("Default parameters did not existed, so I created a default set.")
             
         elif exists == 1:
             print("A Default docking condition set already exists. \n The recommended way to create a new docking parameter set is to edit the Default set using SQLiteBrowser. \n Stopping.") 

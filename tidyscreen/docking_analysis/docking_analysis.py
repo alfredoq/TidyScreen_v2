@@ -28,3 +28,4 @@ class DockingAnalysis:
         complex_pdb_file, output_path, receptor_filename  = docking_analysis_utils.create_fingerprints_analysis_folder(self,assay_folder,assay_id, results_pose_id)
         # Compute fingerprints on target folder
         docking_analysis_utils.compute_fingerprints(output_path,complex_pdb_file,receptor_filename,clean_files)
+        print("Finished computing the fingerprint for the docked pose.")

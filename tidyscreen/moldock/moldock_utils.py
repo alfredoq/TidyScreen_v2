@@ -42,6 +42,9 @@ def store_receptor_model(db,tar_filename, receptor_blob):
     conn.commit()
     conn.close()
     
+    print("Succesfully stored receptor model")
+    
+    
 def check_existing_rec_model(db,folder):
     model_to_check = folder.split('/')[-1].replace('-','_') + '.tar'
     conn = tidyscreen.connect_to_db(db)

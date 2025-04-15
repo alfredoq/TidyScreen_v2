@@ -105,21 +105,28 @@ def create_project_folder(path):
     # Initialize a dictionary to contain all project paths
     all_paths_dict = {}
 
-    for base_folder in project_folders_structure.keys():
-        current_level_dict = {}
-        for folder in project_folders_structure[base_folder]:
-            new_folder = f"{path}/{base_folder}/{folder}"
-            # Create the corresponding folder
-            Path(f"{new_folder}").mkdir(parents=True, exist_ok=False)
-            # Create a dictionary with folder for the current level of folder
-            current_level_dict[folder]=new_folder
-            # Create a dictionary for the base level of folders
-            all_paths_dict[base_folder]=current_level_dict
+    try:
 
-    # Save the project paths to a pickle file
-    project_paths_dir = f"{path}/.project_vars/paths"
-    with open(f"{project_paths_dir}/paths.pkl","wb") as paths_file:
-        pickle.dump(all_paths_dict, paths_file)
+        for base_folder in project_folders_structure.keys():
+            current_level_dict = {}
+            for folder in project_folders_structure[base_folder]:
+                new_folder = f"{path}/{base_folder}/{folder}"
+                # Create the corresponding folder
+                Path(f"{new_folder}").mkdir(parents=True, exist_ok=False)
+                # Create a dictionary with folder for the current level of folder
+                current_level_dict[folder]=new_folder
+                # Create a dictionary for the base level of folders
+                all_paths_dict[base_folder]=current_level_dict
+
+        # Save the project paths to a pickle file
+        project_paths_dir = f"{path}/.project_vars/paths"
+        with open(f"{project_paths_dir}/paths.pkl","wb") as paths_file:
+            pickle.dump(all_paths_dict, paths_file)
+
+    except Exception as error:
+        print(f"Problem found creating the folder: \n {path}. Stopping...")
+        print(error)
+        sys.exit()
 
 def store_project_in_main_database(name,path,all_paths_dict,description):
     conn = connect_to_db(main_db) # Connect to the main database
