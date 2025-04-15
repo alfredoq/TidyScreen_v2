@@ -1,0 +1,8 @@
+cff-version: 1.0.0
+message: "If you use this software, please cite it as below."
+author:
+- family-names: "Quevedo"
+  given-names: "Alfredo"
+  orcid: "https://orcid.org/0000-0002-7891-7834"
+title: "TidyScreen: a Python based package to manage large drug screening campaigns"
+version: 1.0.0
