@@ -233,11 +233,11 @@ def clean_dir(directory):
 
 def append_ligand_mols_blob_object_to_table(db,table_name,row):
     # Prepare and store the corresponding .pdb file
-    pdb_file, tar_pdb_file = pdb_from_smiles(row["SMILES"])
+    pdb_file, tar_pdb_file, net_charge = pdb_from_smiles(row["SMILES"])
     store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
     
     # Prepare and store the corresponding .mol2 file
-    mol2_sybyl_file, tar_mol2_sybyl_file, tar_mol2_gaff_file, tar_frcmod_file = mol2_from_pdb(pdb_file)
+    mol2_sybyl_file, tar_mol2_sybyl_file, tar_mol2_gaff_file, tar_frcmod_file = mol2_from_pdb(pdb_file,net_charge)
     # Store the .mol2 file - atom type: Sybyl
     store_file_as_blob(db,table_name,'mol2_file_sybyl',tar_mol2_sybyl_file,row)
     
@@ -265,27 +265,37 @@ def pdb_from_smiles(smiles):
     confs, mol_hs, ps = generate_ligand_conformers(mol_hs)
     selected_mol = get_conformer_rank(confs, mol_hs, ps)
     pdb_file, inchi_key = save_ligand_pdb_file(selected_mol)
+
+    net_charge = compute_molecule_net_charge(mol)
         
     # Compress the pdb_file
     tar_pdb_file = generate_tar_file(pdb_file)
     
-    return pdb_file, tar_pdb_file
+    return pdb_file, tar_pdb_file, net_charge
 
-def mol2_from_pdb(pdb_file):
+def compute_molecule_net_charge(mol):
+    molecule_charge = 0
+    for atom in mol.GetAtoms():
+        charge = atom.GetFormalCharge()
+        molecule_charge = molecule_charge + charge
+
+    return molecule_charge
+
+def mol2_from_pdb(pdb_file,net_charge):
     # Get the prefixes for the file
     file_prefix = pdb_file.split('/')[-1].replace(".pdb","")
     # Compute .mol2 file
     antechamber_path = shutil.which('antechamber')
     
     # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
-    command1 = f'{antechamber_path} -i {pdb_file} -fi pdb -o /tmp/{file_prefix}_sybyl.mol2 -fo mol2 -c bcc -at sybyl -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
+    command1 = f'{antechamber_path} -i {pdb_file} -fi pdb -o /tmp/{file_prefix}_sybyl.mol2 -fo mol2 -c bcc -nc {net_charge} -at sybyl -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
     subprocess.run(command1, shell=True, capture_output=True, text=True)
     
     # Compress the sybyl.mol2 file for storage
     tar_mol2_sybyl_file = generate_tar_file(f'/tmp/{file_prefix}_sybyl.mol2')
     
     # Compute mol2 with gaff Atom Types - for compatibility with Amber
-    command2 = f'{antechamber_path} -i {pdb_file} -fi pdb -o /tmp/{file_prefix}_gaff.mol2 -fo mol2 -c bcc -at gaff -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
+    command2 = f'{antechamber_path} -i {pdb_file} -fi pdb -o /tmp/{file_prefix}_gaff.mol2 -fo mol2 -c bcc -nc {net_charge} -at gaff -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
     subprocess.run(command2, shell=True, capture_output=True, text=True)
     
     # Compress the gaff.mol2 file for storage
