@@ -54,17 +54,17 @@ def renumber_pdb_file(target_file,renumbered_file,combined_dict,resname_field,re
                 
                 if len(line_split[2]) <= 3:
                     # Parse a new line be written to the renamed .pdbqt file
-                    column_widths = [7, 4, 4, 7, 8, 8, 7, 8]
+                    column_widths = [7, 4, 4, 6, 3, 12, 8, 8]
                     # Format the line in accordance to .pdbqt 
-                    formated_line = line_split[0].ljust(column_widths[0]) + line_split[1].rjust(column_widths[1]) + '  ' + line_split[2].ljust(column_widths[2]) + line_split[3].ljust(column_widths[3]) + destination_resnumber.ljust(column_widths[4]) + line_split[5].ljust(column_widths[5]) + line_split[6].ljust(column_widths[6]) + line_split[7].ljust(column_widths[7])
+                    formated_line = line_split[0].ljust(column_widths[0]) + line_split[1].rjust(column_widths[1]) + '  ' + line_split[2].ljust(column_widths[2]) + line_split[3].ljust(column_widths[3]) + destination_resnumber.rjust(column_widths[4]) + line_split[5].rjust(column_widths[5]) + line_split[6].rjust(column_widths[6]) + line_split[7].rjust(column_widths[7])
                     # Write the formatted line to the output file
                     output_file.write(f"{formated_line} \n")
                 
                 if len(line_split[2]) == 4:
                     # Parse a new line be written to the renamed .pdbqt file
-                    column_widths = [7, 4, 5, 7, 8, 8, 7, 8]
+                    column_widths = [7, 4, 5, 6, 3, 12, 8, 8]
                     # Format the line in accordance to .pdbqt 
-                    formated_line = line_split[0].ljust(column_widths[0]) + line_split[1].rjust(column_widths[1]) + ' ' + line_split[2].ljust(column_widths[2]) + line_split[3].ljust(column_widths[3]) + destination_resnumber.ljust(column_widths[4]) + line_split[5].ljust(column_widths[5]) + line_split[6].ljust(column_widths[6]) + line_split[7].ljust(column_widths[7])
+                    formated_line = line_split[0].ljust(column_widths[0]) + line_split[1].rjust(column_widths[1]) + ' ' + line_split[2].ljust(column_widths[2]) + line_split[3].ljust(column_widths[3]) + destination_resnumber.rjust(column_widths[4]) + line_split[5].rjust(column_widths[5]) + line_split[6].rjust(column_widths[6]) + line_split[7].rjust(column_widths[7])
                     # Write the formatted line to the output file
                     output_file.write(f"{formated_line} \n")
                     
