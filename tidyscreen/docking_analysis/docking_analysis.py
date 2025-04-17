@@ -22,10 +22,10 @@ class DockingAnalysis:
         # Extract 1 pdb pose per cluster
         docking_analysis_utils.extract_1_pdb_per_cluster(assay_folder,results_db_file)
     
-    def compute_fingerprints_for_docked_pose(self,assay_id,results_pose_id,clean_files):
+    def compute_fingerprints_for_docked_pose(self,assay_id,results_pose_id,clean_files=1,solvent="explicit"):
         # Create a custom folder for the analysis and copy/generate relevant files
         assay_folder = self.docking_assays_path + f'/assay_{assay_id}'
         complex_pdb_file, output_path, receptor_filename  = docking_analysis_utils.create_fingerprints_analysis_folder(self,assay_folder,assay_id, results_pose_id)
         # Compute fingerprints on target folder
-        docking_analysis_utils.compute_fingerprints(output_path,complex_pdb_file,receptor_filename,clean_files)
+        docking_analysis_utils.compute_fingerprints(output_path,complex_pdb_file,receptor_filename,clean_files,solvent)
         print("Finished computing the fingerprint for the docked pose.")

@@ -7,12 +7,20 @@ import sys
 import pandas as pd
 from tidyscreen import tidyscreen
 
-def prepare_md_initial_files(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm, dynamics=1):
+def prepare_md_initial_files(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm,solvent, dynamics=1):
     ## Prepare the corresponding 'tleap' input file
     # These preparations is common for fingerprints and MD assays
-    prepare_tleap_input(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm)
-    prepare_min1_input(assay_folder)
-    prepare_min2_input(assay_folder)
+    
+    if solvent == "explicit":
+        prepare_tleap_input(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm)
+        prepare_min1_input(assay_folder)
+        prepare_min2_input(assay_folder)
+    
+    if solvent == "implicit":
+        prepare_tleap_input_implicit_solvent(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm)
+        prepare_min1_input_implicit_solvent(assay_folder)
+        prepare_min2_input_implicit_solvent(assay_folder)
+
     if dynamics == 1: # This will only be executed for simulations involving MD preparations
         prepare_heat1_input(assay_folder)
         prepare_heat2_input(assay_folder)
@@ -35,7 +43,25 @@ def prepare_tleap_input(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_p
         tleap_input.write("quit")
     
     tleap_input.close()
+
+def prepare_tleap_input_implicit_solvent(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm):
+
+    with open(f"{assay_folder}/tleap.in","w") as tleap_input:
+        tleap_input.write("source leaprc.protein.ff14SB \n")
+        tleap_input.write("source leaprc.gaff \n")
+        tleap_input.write("set default PBRadii bondi \n")
+        tleap_input.write(f"UNL = loadmol2 {assay_folder}/{mol2_lig_parm} \n")
+        tleap_input.write(f"loadamberparams {assay_folder}/{frcmod_lig_parm} \n")
+        tleap_input.write(f"COM = loadpdb {complex_pdb_file} \n")
+        tleap_input.write(f"saveamberparm COM {assay_folder}/complex.prmtop {assay_folder}/complex.inpcrd \n")
+        tleap_input.write("quit")
     
+    tleap_input.close()
+
+def prepare_min2_input_implicit_solvent(assay_folder):
+
+    pass
+
 def prepare_min1_input(assay_folder):
     with open(f"{assay_folder}/min1.in","w") as min1_input:    
         min1_input.write("Initial minimization of water molecules\n")
@@ -52,7 +78,28 @@ def prepare_min1_input(assay_folder):
         min1_input.write("END\n")
     
     min1_input.close()
+
+def prepare_min1_input_implicit_solvent(assay_folder):
+
+    with open(f"{assay_folder}/min1.in","w") as min1_input:    
+        min1_input.write("Initial minimization of water molecules\n")
+        min1_input.write("&cntrl\n")
+        min1_input.write("imin = 1,\n")
+        min1_input.write("maxcyc = 5000,\n")
+        min1_input.write("ncyc = 2500,\n")
+        min1_input.write("ntx = 1,\n")
+        min1_input.write("igb = 8,\n")
+        min1_input.write("gbsa = 3,\n")
+        min1_input.write("ntb = 0,\n")
+        min1_input.write("ntr = 0,\n")
+        min1_input.write("cut = 999,\n")
+        min1_input.write("surften = 0.07,\n")
+        min1_input.write("saltcon = 0.0,\n")
+        min1_input.write("&end\n")
+        min1_input.write("END\n")
     
+    min1_input.close()
+
 def prepare_min2_input(assay_folder):
     with open(f"{assay_folder}/min2.in","w") as min2_input:
         min2_input.write("Initial minimization of water molecules\n")
@@ -198,7 +245,6 @@ def prepare_prod_input(assay_folder):
         prod_input.write(f"&end\n")
         prod_input.write(f"END\n")
         
-
 def prepare_md_execution_script(assay_folder):
     pmemd_cuda_path = shutil.which('pmemd.cuda')
     with open(f'{assay_folder}/md_execution.sh','a') as exec_file:
@@ -221,7 +267,7 @@ def run_tleap_input(assay_folder,input_file):
     command = f'{tleap_path} -f {assay_folder}/{input_file}' 
     subprocess.run(command, shell=True, capture_output=True, text=True)
     
-def perform_minimization(assay_folder,ligand_prefix):
+def perform_minimization(assay_folder,ligand_prefix,solvent):
     # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
     pmemd_path = shutil.which('pmemd.cuda')
     # Run first minimization procedure
@@ -231,12 +277,12 @@ def perform_minimization(assay_folder,ligand_prefix):
         subprocess.run(command, shell=True, capture_output=True, text=True)
     except Exception as error:
         print(error)
-        
     
-    # Run second minimization procedure
-    command = f'{pmemd_path} -O -i {assay_folder}/min2.in -o {assay_folder}/min2.out -p {assay_folder}/complex.prmtop -c {assay_folder}/min1.crd -r {assay_folder}/min2.crd' 
-    print(f"Runnning 'min2' for ligand: '{ligand_prefix}'")
-    subprocess.run(command, shell=True, capture_output=True, text=True)
+    if solvent == "explicit":
+        # Run second minimization procedure
+        command = f'{pmemd_path} -O -i {assay_folder}/min2.in -o {assay_folder}/min2.out -p {assay_folder}/complex.prmtop -c {assay_folder}/min1.crd -r {assay_folder}/min2.crd' 
+        print(f"Runnning 'min2' for ligand: '{ligand_prefix}'")
+        subprocess.run(command, shell=True, capture_output=True, text=True)
     
 def write_mmgbsa_input(assay_folder):
     with open(f'{assay_folder}/mmgbsa.in','w') as mmgbsa_file:

@@ -277,25 +277,33 @@ def retrieve_table_name_from_assay_id(self,assay_id):
     
     return table_name
     
-def compute_fingerprints(assay_folder,complex_pdb_file,receptor_filename,clean_files):
+def compute_fingerprints(assay_folder,complex_pdb_file,receptor_filename,clean_files,solvent):
     # From the complex filename prepare the corresponding files naming:
     ligand_prefix = complex_pdb_file.split('/')[-1].split('_')[1]
     ligand_mol2_ref_file = f'{ligand_prefix}_gaff.mol2'
     ligand_frcmod_ref_file = f'{ligand_prefix}.frcmod'
     # Prepare the input files to compute prepare the .prmtop and .inpcrd
-    md_utils.prepare_md_initial_files(assay_folder,complex_pdb_file,ligand_mol2_ref_file,ligand_frcmod_ref_file, dynamics=0)
+    md_utils.prepare_md_initial_files(assay_folder,complex_pdb_file,ligand_mol2_ref_file,ligand_frcmod_ref_file, solvent, dynamics=0)
     # Execute tLeap initialization
     md_utils.run_tleap_input(assay_folder,input_file='tleap.in')
     # Perform minimizations
-    md_utils.perform_minimization(assay_folder,ligand_prefix)
+    md_utils.perform_minimization(assay_folder,ligand_prefix,solvent)
     # Create the MMGBSA input file
     md_utils.write_mmgbsa_input(assay_folder)
     # Use ante ante-MMPBSA.py to create the files required for computation
     md_utils.apply_ante_MMPBSA(assay_folder)
-    # Strip waters from min2.crd to
-    md_utils.strip_waters(assay_folder,"min2.crd","complex.prmtop")
-    # perform the MMPBSA analysis
-    assay_folder, decomp_file = md_utils.compute_MMPBSA(assay_folder,"min2_strip.crd")
+    
+    # Strip solven (if explicit model was used) and/or compute the MMPBSA 
+    if solvent == "explicit":
+        # Strip waters from min2.crd to
+        md_utils.strip_waters(assay_folder,"min2.crd","complex.prmtop")
+        # perform the MMPBSA analysis
+        assay_folder, decomp_file = md_utils.compute_MMPBSA(assay_folder,"min2_strip.crd")
+    
+    if solvent == "implicit":
+        # perform the MMPBSA analysis
+        assay_folder, decomp_file = md_utils.compute_MMPBSA(assay_folder,"min1.crd")
+    
     # perform a cleaning of the target directory if required
     if clean_files == 1:
         md_utils.clean_MMPBSA_files(assay_folder)
