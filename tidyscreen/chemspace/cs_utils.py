@@ -220,23 +220,6 @@ def process_all_mols_in_table(db,table_name,charge):
         print("Stopping")
         sys.exit()
 
-    # try: 
-    #     cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN pdb_file BLOB;") # Will create a 'pdb_file' column of type BLOB
-    #     conn.commit()
-    #     cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN mol2_file_sybyl BLOB;") # Will create a 'mol2_file' column of type BLOB
-    #     conn.commit()
-    #     cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN mol2_file_gaff BLOB;") # Will create a 'mol2_file' column of type BLOB
-    #     conn.commit()
-    #     cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN frcmod_file BLOB;") # Will create a 'frcmod_file' column of type BLOB
-    #     conn.commit()
-    #     cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN pdbqt_file BLOB;") # Will create a 'pdbqt_file' column of type BLOB
-    #     conn.commit()
-
-    # except Exception as error:
-    #     print(f"Error creating colums in: '{table_name}'")
-    #     print(error)
-    #     sys.exit()
-
     # Compute the corresponding molecules
     sql = f"""SELECT id, SMILES, Name FROM '{table_name}';"""
     df = pd.read_sql_query(sql,conn)
@@ -245,7 +228,6 @@ def process_all_mols_in_table(db,table_name,charge):
 
     # Once all files have been generated and stored in the db, clean '/tmp' dir
     clean_dir("/tmp")
-
 
 def check_columns_existence_in_table(conn,table_name,columns_list):
     cursor = conn.cursor()
