@@ -116,13 +116,20 @@ def list_ligands_tables(db):
 def delete_ligands_table(db,table_name):
     conn = tidyscreen.connect_to_db(db)
     cursor = conn.cursor()
-    # Query to get all table names
-    cursor.execute(f"DROP TABLE IF EXISTS {table_name};")
-    # Fetch all table names
-    conn.commit()
-    conn.close
-    # Print table names
-    print(f"Table '{table_name}' has been deleted from '{db}'")
+    
+    # Try to delete the corresponding table
+    try:
+        cursor.execute(f"DROP TABLE {table_name};")
+        # Fetch all table names
+        conn.commit()
+        conn.close
+        # Print table names
+        print(f"Table '{table_name}' has been deleted from '{db}'")
+    
+    except Exception as error:
+        print(f"Error deleting table '{table_name}': \n {error}")
+        print("Stopping...")
+        sys.exit()
 
 def depict_ligands_table(db,table_name,output_path,max_mols_ppage=25):
     conn = tidyscreen.connect_to_db(db)
@@ -194,32 +201,61 @@ def check_folder_presence(folder,create=0):
             # Create the corresponding folder
             Path(f"{folder}").mkdir(parents=True, exist_ok=False)
 
-def process_all_mols_in_table(db,table_name):
+def process_all_mols_in_table(db,table_name,charge):
     conn = tidyscreen.connect_to_db(db)
     cursor = conn.cursor()
-    try: 
-        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN pdb_file BLOB;") # Will create a 'pdb_file' column of type BLOB
-        conn.commit()
-        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN mol2_file_sybyl BLOB;") # Will create a 'mol2_file' column of type BLOB
-        conn.commit()
-        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN mol2_file_gaff BLOB;") # Will create a 'mol2_file' column of type BLOB
-        conn.commit()
-        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN frcmod_file BLOB;") # Will create a 'frcmod_file' column of type BLOB
-        conn.commit()
-        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN pdbqt_file BLOB;") # Will create a 'pdbqt_file' column of type BLOB
-        conn.commit()
-    except Exception as error:
-        print(f"Error creating colums in: '{table_name}'")
-        print(error)
-        sys.exit()
     
+    # Define the list of column name to be created to store mol objects
+    list_mol_objects_colnames = ["pdb_file","mol2_file_sybyl","mol2_file_gaff","frcmod_file","pdbqt_file","charge_model"]
+    list_mol_objects_colnames_types = ["BLOB","BLOB","BLOB","BLOB","BLOB","TEXT"]
+
+    check_columns_existence_in_table(conn, table_name, list_mol_objects_colnames)
+
+    # Create all the columns to store mol objects
+    try:
+        for index, column in enumerate(list_mol_objects_colnames):
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column} {list_mol_objects_colnames_types[index]};")
+    except Exception as error:
+        print(error)
+        print("Stopping")
+        sys.exit()
+
+    # try: 
+    #     cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN pdb_file BLOB;") # Will create a 'pdb_file' column of type BLOB
+    #     conn.commit()
+    #     cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN mol2_file_sybyl BLOB;") # Will create a 'mol2_file' column of type BLOB
+    #     conn.commit()
+    #     cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN mol2_file_gaff BLOB;") # Will create a 'mol2_file' column of type BLOB
+    #     conn.commit()
+    #     cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN frcmod_file BLOB;") # Will create a 'frcmod_file' column of type BLOB
+    #     conn.commit()
+    #     cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN pdbqt_file BLOB;") # Will create a 'pdbqt_file' column of type BLOB
+    #     conn.commit()
+
+    # except Exception as error:
+    #     print(f"Error creating colums in: '{table_name}'")
+    #     print(error)
+    #     sys.exit()
+
+    # Compute the corresponding molecules
     sql = f"""SELECT id, SMILES, Name FROM '{table_name}';"""
     df = pd.read_sql_query(sql,conn)
     pandarallel.initialize(progress_bar=True)
-    df.parallel_apply(lambda row: append_ligand_mols_blob_object_to_table(db,table_name,row), axis=1)
+    df.parallel_apply(lambda row: append_ligand_mols_blob_object_to_table(db,table_name,row,charge), axis=1)
 
     # Once all files have been generated and stored in the db, clean '/tmp' dir
     clean_dir("/tmp")
+
+
+def check_columns_existence_in_table(conn,table_name,columns_list):
+    cursor = conn.cursor()
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = [row[1] for row in cursor.fetchall()]
+    # Return True if all items in 'columns_list' already exist as columns in 'table_name'
+    if all(item in columns for item in columns_list):
+        print(f"The columns: \n '{columns_list} \n already exists in '{table_name}'. \n To process again delete the whole table and recompute molecules. Stoppping...")
+
+        sys.exit()
 
 def clean_dir(directory):
     extensions = ["mol2", "pdb", "pdbqt", "frcmod"]  # Add extensions to delete
@@ -231,13 +267,13 @@ def clean_dir(directory):
             except Exception as e:
                 pass
 
-def append_ligand_mols_blob_object_to_table(db,table_name,row):
+def append_ligand_mols_blob_object_to_table(db,table_name,row,charge):
     # Prepare and store the corresponding .pdb file
     pdb_file, tar_pdb_file, net_charge = pdb_from_smiles(row["SMILES"])
     store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
     
     # Prepare and store the corresponding .mol2 file
-    mol2_sybyl_file, tar_mol2_sybyl_file, tar_mol2_gaff_file, tar_frcmod_file = mol2_from_pdb(pdb_file,net_charge)
+    mol2_sybyl_file, tar_mol2_sybyl_file, tar_mol2_gaff_file, tar_frcmod_file = mol2_from_pdb(pdb_file,net_charge,charge)
     # Store the .mol2 file - atom type: Sybyl
     store_file_as_blob(db,table_name,'mol2_file_sybyl',tar_mol2_sybyl_file,row)
     
@@ -251,12 +287,23 @@ def append_ligand_mols_blob_object_to_table(db,table_name,row):
     # Store the .pdbqt file
     store_file_as_blob(db,table_name,'pdbqt_file',tar_pdbqt_file,row)
 
+    # Append the charge model to the row
+    store_string_in_column(db,table_name,"charge_model",charge,row)
+
 def store_file_as_blob(db,table_name,colname,tar_pdb_file,row):
     conn = tidyscreen.connect_to_db(db)
     cursor = conn.cursor()
     id = row['id']
     # Will store the '.pdb' file as a blob object into the database
     cursor.execute(f"UPDATE {table_name} SET {colname} = ? WHERE id = {id};",(tar_pdb_file,))
+    conn.commit()
+
+def store_string_in_column(db,table_name,colname,string,row):
+    conn = tidyscreen.connect_to_db(db)
+    cursor = conn.cursor()
+    id = row['id']
+    # Will store the '.pdb' file as a blob object into the database
+    cursor.execute(f"UPDATE {table_name} SET {colname} = ? WHERE id = {id};",(string,))
     conn.commit()
 
 def pdb_from_smiles(smiles):
@@ -281,21 +328,21 @@ def compute_molecule_net_charge(mol):
 
     return molecule_charge
 
-def mol2_from_pdb(pdb_file,net_charge):
+def mol2_from_pdb(pdb_file,net_charge,charge):
     # Get the prefixes for the file
     file_prefix = pdb_file.split('/')[-1].replace(".pdb","")
     # Compute .mol2 file
     antechamber_path = shutil.which('antechamber')
     
     # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
-    command1 = f'{antechamber_path} -i {pdb_file} -fi pdb -o /tmp/{file_prefix}_sybyl.mol2 -fo mol2 -c bcc -nc {net_charge} -at sybyl -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
+    command1 = f'{antechamber_path} -i {pdb_file} -fi pdb -o /tmp/{file_prefix}_sybyl.mol2 -fo mol2 -c {charge} -nc {net_charge} -at sybyl -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
     subprocess.run(command1, shell=True, capture_output=True, text=True)
     
     # Compress the sybyl.mol2 file for storage
     tar_mol2_sybyl_file = generate_tar_file(f'/tmp/{file_prefix}_sybyl.mol2')
     
     # Compute mol2 with gaff Atom Types - for compatibility with Amber
-    command2 = f'{antechamber_path} -i {pdb_file} -fi pdb -o /tmp/{file_prefix}_gaff.mol2 -fo mol2 -c bcc -nc {net_charge} -at gaff -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
+    command2 = f'{antechamber_path} -i {pdb_file} -fi pdb -o /tmp/{file_prefix}_gaff.mol2 -fo mol2 -c {charge} -nc {net_charge} -at gaff -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
     subprocess.run(command2, shell=True, capture_output=True, text=True)
     
     # Compress the gaff.mol2 file for storage
