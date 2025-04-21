@@ -47,12 +47,12 @@ class ChemSpace:
         
         print("finished")
 
-    def generate_mols_in_table(self,table_name):
+    def generate_mols_in_table(self,table_name,charge="bcc"):
         """
         Will process all SMILES present in a given table an generate molecules stored in different formats
         """
         db = f"{self.cs_db_path}/chemspace.db"
-        cs_utils.process_all_mols_in_table(db,table_name) # Will generate and store the corresponding .mol2 files in the given table
+        cs_utils.process_all_mols_in_table(db,table_name,charge) # Will generate and store the corresponding .mol2 files in the given table
         
     def retrieve_mols_in_table(self,table_name,outpath=None,ligname=None,pdb=1,mol2_sybyl=1,mol2_gaff2=1,frcmod=1,pdbqt=1):
         database_folder = self.project.proj_folders_path["chemspace"]["processed_data"]
