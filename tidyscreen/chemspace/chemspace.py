@@ -22,6 +22,7 @@ class ChemSpace:
         first_element = df.iloc[0, 1]  # First row, second column (i.e. the first SMILES)
         # Check if the first element is a valid SMILES
         cs_utils.check_smiles(first_element) # Will stop execution if 'first_element' not a valid SMILES
+        
         df = cs_utils.process_input_df(df)
         cs_utils.save_df_to_db(f"{self.cs_db_path}/chemspace.db",df,target_table_name)
 
@@ -47,12 +48,14 @@ class ChemSpace:
         
         print("finished")
 
-    def generate_mols_in_table(self,table_name,charge="bcc"):
+    def generate_mols_in_table(self,table_name,charge="bcc",pdb=1,mol2_sybyl=1,mol2_gaff2=1,pdbqt=1):
         """
         Will process all SMILES present in a given table an generate molecules stored in different formats
         """
         db = f"{self.cs_db_path}/chemspace.db"
-        cs_utils.process_all_mols_in_table(db,table_name,charge) # Will generate and store the corresponding .mol2 files in the given table
+        cs_utils.process_all_mols_in_table(db,table_name,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt) # Will generate and store the corresponding .mol2 files in the given table
+        # Clean the /tmp directory
+        #cs_utils.clean_dir("/tmp")
         
     def retrieve_mols_in_table(self,table_name,outpath=None,ligname=None,pdb=1,mol2_sybyl=1,mol2_gaff2=1,frcmod=1,pdbqt=1):
         database_folder = self.project.proj_folders_path["chemspace"]["processed_data"]

@@ -15,6 +15,7 @@ import io
 import subprocess
 from meeko import MoleculePreparation
 from meeko import PDBQTWriterLegacy
+from rdkit.Chem.EnumerateStereoisomers import EnumerateStereoisomers, StereoEnumerationOptions
 
 def check_smiles(smiles):
     
@@ -48,9 +49,11 @@ def process_input_df(df):
             elif new_col == "flag":
                 df[new_col] = 0
 
-    df = compute_inchi_key_for_whole_df(df)
+    # Enumerate stereoisomers in the input df
+    df_enumerated = enumerate_stereoisomers(df)
+    df_ready = compute_inchi_key_for_whole_df(df_enumerated)
 
-    return df
+    return df_ready
 
 def compute_inchi_key_for_whole_df(df):
     pandarallel.initialize(progress_bar=False)
@@ -61,9 +64,32 @@ def compute_inchi_key(smiles):
     try:
         mol = Chem.MolFromSmiles(smiles)
         inchi_key = Chem.MolToInchiKey(mol)
+        
         return inchi_key
+        
     except:
         pass
+
+def enumerate_stereoisomers(df):
+    options = StereoEnumerationOptions(onlyUnassigned=True, unique=True, maxIsomers=32)
+    df_enumerated = pd.DataFrame(columns=['id','SMILES','name','flag',"stereoisomers_nbr"])
+    for index, row in df.iterrows():
+        mol = Chem.MolFromSmiles(row["SMILES"])
+        mol_hs = Chem.AddHs(mol)
+        isomers = list(EnumerateStereoisomers(mol_hs,options=options))
+        counter = 1
+        for isomer in isomers:
+            isomer_no_hs = Chem.RemoveHs(isomer)
+            smiles = Chem.MolToSmiles(isomer_no_hs)
+            df_enumerated = df_enumerated._append({"id":counter,"SMILES":smiles,"name":row["name"],"flag":row["flag"],"stereoisomers_nbr":len(isomers)},ignore_index=True)
+            counter += 1
+        
+    return df_enumerated
+    
+    #mol_hs = Chem.AddHs(mol)
+    #isomers = list(EnumerateStereoisomers(mol_hs,options=options))
+    
+    #return isomers
 
 def check_table_presence(conn,table_name):
     "Will return 1 if exists, otherwise returns 0"
@@ -201,14 +227,40 @@ def check_folder_presence(folder,create=0):
             # Create the corresponding folder
             Path(f"{folder}").mkdir(parents=True, exist_ok=False)
 
-def process_all_mols_in_table(db,table_name,charge):
+def process_all_mols_in_table(db,table_name,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt):
     conn = tidyscreen.connect_to_db(db)
     cursor = conn.cursor()
     
-    # Define the list of column name to be created to store mol objects
-    list_mol_objects_colnames = ["pdb_file","mol2_file_sybyl","mol2_file_gaff","frcmod_file","pdbqt_file","charge_model"]
-    list_mol_objects_colnames_types = ["BLOB","BLOB","BLOB","BLOB","BLOB","TEXT"]
+    # Define the list of column name to be created to store mol objects based on output selection
+    list_mol_objects_colnames = []
+    list_mol_objects_colnames_types = []
 
+    if pdb == 1:
+        list_mol_objects_colnames.append("pdb_file")
+        list_mol_objects_colnames_types.append("BLOB")
+    if mol2_sybyl == 1:
+        list_mol_objects_colnames.append("mol2_file_sybyl")
+        list_mol_objects_colnames_types.append("BLOB")
+    if mol2_gaff2 == 1:
+        list_mol_objects_colnames.append("mol2_file_gaff")
+        list_mol_objects_colnames_types.append("BLOB")
+        list_mol_objects_colnames.append("frcmod_file")
+        list_mol_objects_colnames_types.append("BLOB")
+    if pdbqt == 1:
+        list_mol_objects_colnames.append("pdbqt_file")
+        list_mol_objects_colnames_types.append("BLOB")
+
+    # Finally add the charge model if mol2 are requested:
+    
+    if mol2_sybyl == 1 or mol2_gaff2 == 1:
+        list_mol_objects_colnames.append("charge_model")
+        list_mol_objects_colnames_types.append("TEXT")
+        
+    # Exit if no molecules is selected
+    if len(list_mol_objects_colnames) == 0:
+        print("No computation of molecules was requested. Stopping...")
+        sys.exit()
+    
     check_columns_existence_in_table(conn, table_name, list_mol_objects_colnames)
 
     # Create all the columns to store mol objects
@@ -220,18 +272,25 @@ def process_all_mols_in_table(db,table_name,charge):
         print("Stopping")
         sys.exit()
 
+
     # Compute the corresponding molecules
     sql = f"""SELECT id, SMILES, Name FROM '{table_name}';"""
     df = pd.read_sql_query(sql,conn)
     pandarallel.initialize(progress_bar=True)
-    df.parallel_apply(lambda row: append_ligand_mols_blob_object_to_table(db,table_name,row,charge), axis=1)
+    df.parallel_apply(lambda row: append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt), axis=1)
 
-    # Once all files have been generated and stored in the db, clean '/tmp' dir
-    clean_dir("/tmp")
+    try:
+        clean_temp_dir(db,table_name)
+    except:
+        pass
 
 def check_columns_existence_in_table(conn,table_name,columns_list):
     cursor = conn.cursor()
-    cursor.execute(f"PRAGMA table_info({table_name})")
+    try:
+        cursor.execute(f"PRAGMA table_info({table_name})")
+    except Exception as error:
+        print(error)
+        
     columns = [row[1] for row in cursor.fetchall()]
     # Return True if all items in 'columns_list' already exist as columns in 'table_name'
     if all(item in columns for item in columns_list):
@@ -239,38 +298,131 @@ def check_columns_existence_in_table(conn,table_name,columns_list):
 
         sys.exit()
 
-def clean_dir(directory):
-    extensions = ["mol2", "pdb", "pdbqt", "frcmod"]  # Add extensions to delete
-    for ext in extensions:
-        pattern = os.path.join(directory, f"*.{ext}")
-        for file in glob.glob(pattern):
-            try:
-                os.remove(file)
-            except Exception as e:
-                pass
+def append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt):
+    
+    action = 0 
+    
+    if pdb == 1:
+        # Prepare and store the corresponding .pdb file
+        pdb_file, tar_pdb_file, net_charge = pdb_from_smiles(row["SMILES"])
+        store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
+        action = 1
+    
+    if mol2_sybyl == 1 and pdb == 1:
+        # Prepare and store the corresponding .mol2 file
+        output_file_sybyl, output_tar_file_sybyl = mol2_from_pdb(pdb_file,net_charge,charge,at="sybyl")
+        # Store the .mol2 file - atom type: Sybyl
+        store_file_as_blob(db,table_name,'mol2_file_sybyl',output_tar_file_sybyl,row)
+    
+    if mol2_gaff2 == 1 and pdb == 1:
+        # Prepare and store the corresponding .mol2 file
+        output_file_gaff, output_tar_file_gaff = mol2_from_pdb(pdb_file,net_charge,charge,at="gaff")
+        # Store the .mol2 file - atom type: gaff
+        store_file_as_blob(db,table_name,'mol2_file_gaff',output_tar_file_gaff,row)
+        # Compute the .frcmod file
+        output_tar_frcmod = compute_frcmod_file(output_file_gaff,at="gaff")
+        # Store the .frcmod file
+        store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
+    
+    if pdbqt == 1 and mol2_sybyl == 1 and pdb == 1:
+        #Prepare and store the corresponding .pdbqt file
+        tar_pdbqt_file = pdbqt_from_mol2(output_file_sybyl)
+        #print(tar_pdbqt_file)
+        # # Store the .pdbqt file
+        store_file_as_blob(db,table_name,'pdbqt_file',tar_pdbqt_file,row)
 
-def append_ligand_mols_blob_object_to_table(db,table_name,row,charge):
-    # Prepare and store the corresponding .pdb file
-    pdb_file, tar_pdb_file, net_charge = pdb_from_smiles(row["SMILES"])
-    store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
-    
-    # Prepare and store the corresponding .mol2 file
-    mol2_sybyl_file, tar_mol2_sybyl_file, tar_mol2_gaff_file, tar_frcmod_file = mol2_from_pdb(pdb_file,net_charge,charge)
-    # Store the .mol2 file - atom type: Sybyl
-    store_file_as_blob(db,table_name,'mol2_file_sybyl',tar_mol2_sybyl_file,row)
-    
-    # Store the .mol2 file - atom type: gaff
-    store_file_as_blob(db,table_name,'mol2_file_gaff',tar_mol2_gaff_file,row)
-    # Store the .frcmod file
-    store_file_as_blob(db,table_name,'frcmod_file',tar_frcmod_file,row)
-    
-    #Prepare and store the corresponding .pdbqt file
-    tar_pdbqt_file = pdbqt_from_mol2(mol2_sybyl_file)
-    # Store the .pdbqt file
-    store_file_as_blob(db,table_name,'pdbqt_file',tar_pdbqt_file,row)
+    if mol2_sybyl == 1 or mol2_gaff2 == 1 and pdb == 1:
+        # Append the charge model to the row
+        store_string_in_column(db,table_name,"charge_model",charge,row)
 
-    # Append the charge model to the row
-    store_string_in_column(db,table_name,"charge_model",charge,row)
+    if action == 0:
+        print("No computation of molecules was requested. Stopping...")
+        sys.exit()
+
+def pdb_from_smiles(smiles):
+    
+    try:
+        mol = Chem.MolFromSmiles(smiles)
+        mol_hs = Chem.AddHs(mol)
+        confs, mol_hs, ps = generate_ligand_conformers(mol_hs)
+        selected_mol = get_conformer_rank(confs, mol_hs, ps)
+        pdb_file, inchi_key = save_ligand_pdb_file(selected_mol)
+        # Compute the net charge of the molecule for potential use in antechamber
+        net_charge = compute_molecule_net_charge(mol)
+            
+        # Compress the pdb_file
+        tar_pdb_file = generate_tar_file(pdb_file)
+        
+        return pdb_file, tar_pdb_file, net_charge
+    except Exception as error:
+        print(f"Problem with SMILES: \n {smiles}")
+
+def mol2_from_pdb(pdb_file,net_charge,charge,at):
+    # Get the prefixes for the file
+    file_prefix = pdb_file.split('/')[-1].replace(".pdb","")
+    # Compute .mol2 file
+    antechamber_path = shutil.which('antechamber')
+    
+    temp_folder = f"/tmp/{file_prefix}"
+    os.makedirs(temp_folder, exist_ok=True)
+    
+    output_file = f"{temp_folder}/{file_prefix}_{at}.mol2"
+    # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
+    antechamber_command = f'cd {temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge} -nc {net_charge} -at {at} -pf y' # The 'sybyl' atom type 
+    #convention is used for compatibility with RDKit
+    subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
+        
+    # Compress the output file for storage
+    output_tar_file = generate_tar_file(output_file)
+        
+    return output_file, output_tar_file
+
+def compute_frcmod_file(mol2_file,at):
+    # Get the prefixes for the file
+    file_prefix = mol2_file.split('/')[-1].replace(f"_{at}.mol2","")
+    temp_folder = f"/tmp/{file_prefix}"
+    output_file = f"{temp_folder}/{file_prefix}.frcmod"
+    # Compute the frcmod file
+    os.makedirs(temp_folder, exist_ok=True)
+    parmchk2_path = shutil.which('parmchk2')
+    
+    parmchk2_command = f'{parmchk2_path} -i {mol2_file} -f mol2 -o {output_file}' 
+    subprocess.run(parmchk2_command, shell=True, capture_output=True, text=True)
+    
+    # Compress the output file for storage
+    output_tar_file = generate_tar_file(output_file)
+    
+    return output_tar_file
+    
+def pdbqt_from_mol2(mol2_file):
+    # Load the corresponding .mol2 file 
+    file_prefix = mol2_file.split('/')[-1].replace('_sybyl.mol2','')
+    
+    try:
+        mol = Chem.MolFromMol2File(mol2_file,removeHs=False)
+    except:
+        print(mol2_file)
+    
+    atoms_dict = create_meeko_atoms_dict()
+    mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="read", charge_atom_prop="_TriposPartialCharge",add_atom_types=atoms_dict)
+    
+    mol_setup_list = mk_prep(mol)
+    molsetup = mol_setup_list[0]
+
+    pdbqt_string = PDBQTWriterLegacy.write_string(molsetup)
+    
+    pdbqt_outfile = f'/tmp/{file_prefix}/{file_prefix}_tmp.pdbqt'
+    with open(pdbqt_outfile,'w') as pdbqt_file:
+        pdbqt_file.write(pdbqt_string[0])
+
+    # In this section, .pdbqt atoms will be renamed to match the original .mol2 file
+
+    atom_names, atom_ref_coords = get_atom_names_from_mol2(mol2_file)
+    renamed_pdbqt_file = rename_pdbqt_file(pdbqt_outfile,atom_names, atom_ref_coords,file_prefix)
+
+    tar_pdbqt_file = generate_tar_file(renamed_pdbqt_file)
+    
+    return tar_pdbqt_file
 
 def store_file_as_blob(db,table_name,colname,tar_pdb_file,row):
     conn = tidyscreen.connect_to_db(db)
@@ -288,20 +440,6 @@ def store_string_in_column(db,table_name,colname,string,row):
     cursor.execute(f"UPDATE {table_name} SET {colname} = ? WHERE id = {id};",(string,))
     conn.commit()
 
-def pdb_from_smiles(smiles):
-    mol = Chem.MolFromSmiles(smiles)
-    mol_hs = Chem.AddHs(mol)
-    confs, mol_hs, ps = generate_ligand_conformers(mol_hs)
-    selected_mol = get_conformer_rank(confs, mol_hs, ps)
-    pdb_file, inchi_key = save_ligand_pdb_file(selected_mol)
-
-    net_charge = compute_molecule_net_charge(mol)
-        
-    # Compress the pdb_file
-    tar_pdb_file = generate_tar_file(pdb_file)
-    
-    return pdb_file, tar_pdb_file, net_charge
-
 def compute_molecule_net_charge(mol):
     molecule_charge = 0
     for atom in mol.GetAtoms():
@@ -309,61 +447,6 @@ def compute_molecule_net_charge(mol):
         molecule_charge = molecule_charge + charge
 
     return molecule_charge
-
-def mol2_from_pdb(pdb_file,net_charge,charge):
-    # Get the prefixes for the file
-    file_prefix = pdb_file.split('/')[-1].replace(".pdb","")
-    # Compute .mol2 file
-    antechamber_path = shutil.which('antechamber')
-    
-    # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
-    command1 = f'{antechamber_path} -i {pdb_file} -fi pdb -o /tmp/{file_prefix}_sybyl.mol2 -fo mol2 -c {charge} -nc {net_charge} -at sybyl -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
-    subprocess.run(command1, shell=True, capture_output=True, text=True)
-    
-    # Compress the sybyl.mol2 file for storage
-    tar_mol2_sybyl_file = generate_tar_file(f'/tmp/{file_prefix}_sybyl.mol2')
-    
-    # Compute mol2 with gaff Atom Types - for compatibility with Amber
-    command2 = f'{antechamber_path} -i {pdb_file} -fi pdb -o /tmp/{file_prefix}_gaff.mol2 -fo mol2 -c {charge} -nc {net_charge} -at gaff -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
-    subprocess.run(command2, shell=True, capture_output=True, text=True)
-    
-    # Compress the gaff.mol2 file for storage
-    tar_mol2_gaff_file = generate_tar_file(f'/tmp/{file_prefix}_gaff.mol2')
-    
-    # Compute .frcmod file consistent with the mol2
-    parmchk_path = shutil.which('parmchk2')
-    command2 = f'{parmchk_path} -i /tmp/{file_prefix}_gaff.mol2 -f mol2 -o /tmp/{file_prefix}.frcmod'
-    subprocess.run(command2, shell=True, capture_output=True, text=True)
-    
-    # Compress the .frcmod file for storage
-    tar_frcmod_file = generate_tar_file(f'/tmp/{file_prefix}.frcmod')
-
-    return f'/tmp/{file_prefix}_sybyl.mol2', tar_mol2_sybyl_file, tar_mol2_gaff_file, tar_frcmod_file
-
-def pdbqt_from_mol2(mol2_file):
-    # Load the corresponding .mol2 file 
-    file_prefix = mol2_file.split('/')[-1].replace('.mol2','')
-    mol = Chem.MolFromMol2File(mol2_file,removeHs=False)
-    
-    atoms_dict = create_meeko_atoms_dict()
-    mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="read", charge_atom_prop="_TriposPartialCharge",add_atom_types=atoms_dict)
-    
-    mol_setup_list = mk_prep(mol)
-    molsetup = mol_setup_list[0]
-
-    pdbqt_string = PDBQTWriterLegacy.write_string(molsetup)
-    
-    with open(f'/tmp/{file_prefix}.pdbqt','w') as pdbqt_file:
-        pdbqt_file.write(pdbqt_string[0])
-
-    # In this section, .pdbqt atoms will be renamed to match the original .mol2 file
-
-    atom_names, atom_ref_coords = get_atom_names_from_mol2(mol2_file)
-    renamed_pdbqt_file = rename_pdbqt_file(f'/tmp/{file_prefix}.pdbqt',atom_names, atom_ref_coords)
-
-    tar_pdbqt_file = generate_tar_file(renamed_pdbqt_file)
-    
-    return tar_pdbqt_file
 
 def get_atom_names_from_mol2_REDESIGNED(mol2_file):
     """Extracts atom names from a Mol2 file manually.
@@ -414,8 +497,8 @@ def get_atom_names_from_mol2(mol2_file):
   
     return atom_names, atom_ref_coord
 
-def rename_pdbqt_file(target_pdqbt_file,atom_names, atom_ref_coords):
-    output_file = target_pdqbt_file.split('_')[0] + ".pdbqt"
+def rename_pdbqt_file(target_pdqbt_file,atom_names, atom_ref_coords,file_prefix):
+    output_file = f"/tmp/{file_prefix}/{file_prefix}.pdbqt"
     with open(target_pdqbt_file,'r') as readfile, open(output_file,'w') as writefile:
         for line in readfile:
             line_split = line.rstrip().split()
@@ -516,7 +599,9 @@ def get_conformer_rank(confs, mol_hs, ps,rank=0):
 
 def save_ligand_pdb_file(selected_mol):
     inchi_key = Chem.MolToInchiKey(selected_mol)
-    pdb_file = f'/tmp/{inchi_key}.pdb'
+    temp_folder = f'/tmp/{inchi_key}'
+    os.makedirs(temp_folder, exist_ok=True)
+    pdb_file = f'{temp_folder}/{inchi_key}.pdb'
     
     Chem.MolToPDBFile(selected_mol,pdb_file)
 
@@ -606,4 +691,27 @@ def retrieve_blob_ligfiles(db,table_name,output_path,ligname,blob_colname):
             print(error)
             sys.exit()
 
-
+def clean_temp_dir(db,table_name):
+    conn = tidyscreen.connect_to_db(db)
+    cursor = conn.cursor()
+    
+    # Get the inchi key values to construct a list of directories to delete
+    cursor.execute(f"SELECT inchi_key FROM {table_name}")
+    rows = cursor.fetchall()
+    
+    # Extract the values into a list
+    inchikey_values = [row[0] for row in rows]
+    
+    for inchi_key in inchikey_values:
+        shutil.rmtree(f"/tmp/{inchi_key}")
+    
+    conn.close
+    
+    # extensions = ["mol2", "pdb", "pdbqt", "frcmod"]  # Add extensions to delete
+    # for ext in extensions:
+    #     pattern = os.path.join(directory, f"*.{ext}")
+    #     for file in glob.glob(pattern):
+    #         try:
+    #             os.remove(file)
+    #         except Exception as e:
+    #             pass
