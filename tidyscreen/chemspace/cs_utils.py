@@ -32,7 +32,7 @@ def process_input_df(df):
     Will rename the columns of the df constructed from a .csv input. If 'name' or 'flag' columns does not exist they will be created.
     """
     rename_dict = {
-    'index': 'id', # Renaming the index column
+    #'index': 'id', # Renaming the index column
     0: 'SMILES',  # Renaming 'A' to 'New_A'
     1: 'name',  # Renaming 'B' to 'New_B'
     2: 'flag'   # 'C' doesn't exist, it will be created
@@ -51,6 +51,7 @@ def process_input_df(df):
 
     # Enumerate stereoisomers in the input df
     df_enumerated = enumerate_stereoisomers(df)
+    
     df_ready = compute_inchi_key_for_whole_df(df_enumerated)
 
     return df_ready
@@ -77,19 +78,17 @@ def enumerate_stereoisomers(df):
         mol = Chem.MolFromSmiles(row["SMILES"])
         mol_hs = Chem.AddHs(mol)
         isomers = list(EnumerateStereoisomers(mol_hs,options=options))
-        counter = 1
+        #counter = 1
         for isomer in isomers:
             isomer_no_hs = Chem.RemoveHs(isomer)
             smiles = Chem.MolToSmiles(isomer_no_hs)
-            df_enumerated = df_enumerated._append({"id":counter,"SMILES":smiles,"name":row["name"],"flag":row["flag"],"stereoisomers_nbr":len(isomers)},ignore_index=True)
-            counter += 1
+            df_enumerated = df_enumerated._append({"SMILES":smiles,"name":row["name"],"flag":row["flag"],"stereoisomers_nbr":len(isomers)},ignore_index=True)
+
+    # Create the if column by assigning the index of the enumerated df
+    df_enumerated['id'] = df_enumerated.index
+    df_enumerated = df_enumerated[['id'] + [c for c in df.columns if c != 'id']] # This will make the 'id' column the first one
         
     return df_enumerated
-    
-    #mol_hs = Chem.AddHs(mol)
-    #isomers = list(EnumerateStereoisomers(mol_hs,options=options))
-    
-    #return isomers
 
 def check_table_presence(conn,table_name):
     "Will return 1 if exists, otherwise returns 0"
@@ -276,11 +275,12 @@ def process_all_mols_in_table(db,table_name,charge,pdb,mol2_sybyl,mol2_gaff2,pdb
     # Compute the corresponding molecules
     sql = f"""SELECT id, SMILES, Name FROM '{table_name}';"""
     df = pd.read_sql_query(sql,conn)
-    pandarallel.initialize(progress_bar=True)
+    pandarallel.initialize(progress_bar=True) # Activate Progress Bar
     df.parallel_apply(lambda row: append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt), axis=1)
 
     try:
-        clean_temp_dir(db,table_name)
+        pass
+        #clean_temp_dir(db,table_name)
     except:
         pass
 
@@ -354,6 +354,7 @@ def pdb_from_smiles(smiles):
         tar_pdb_file = generate_tar_file(pdb_file)
         
         return pdb_file, tar_pdb_file, net_charge
+    
     except Exception as error:
         print(f"Problem with SMILES: \n {smiles}")
 
@@ -555,9 +556,10 @@ def create_meeko_atoms_dict():
 
 def generate_tar_file(file):
     """Compress the pdb file into a TAR archive and return its binary content."""
+    filename = file.split("/")[-1]
     tar_buffer = io.BytesIO()  # Create an in-memory buffer
     with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
-        tar.add(file, arcname=file.split("/")[-1])  # Store only filename in TAR
+        tar.add(file, arcname=filename)  # Store only filename in TAR
     
     return tar_buffer.getvalue()  # Return TAR file as binary
 
@@ -642,7 +644,6 @@ ts.
 def retrieve_blob_ligfiles(db,table_name,output_path,ligname,blob_colname):
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
-
     
     if ligname == None:
 
@@ -659,11 +660,12 @@ def retrieve_blob_ligfiles(db,table_name,output_path,ligname,blob_colname):
                 f.write(file_blob)
             
             # Extract the file
-            with tarfile.open(output_file, 'r:*') as tar_ref:
-                tar_ref.extractall(output_path)
-                os.remove(output_file)
-
-
+            with tarfile.open(output_file, 'r') as tar_ref:
+                try:
+                    tar_ref.extractall(path=output_path)
+                except Exception as error:
+                    print(error)
+                
     else:
         # Retrieve custom ligand by 'ligname'
         

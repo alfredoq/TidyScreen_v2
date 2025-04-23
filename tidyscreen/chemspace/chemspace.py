@@ -17,9 +17,11 @@ class ChemSpace:
         Will read a .csv file and store it into de corresponding database
         """
         target_table_name = file.split("/")[-1].replace(".csv","").replace(".smi","").replace("-", "_") # The last replace will avoid SQL selection actions conflicts
-        df = pd.read_csv(file,header=None)
-        df = df.reset_index() # Will add the index as a column to generate an 'id' column
-        first_element = df.iloc[0, 1]  # First row, second column (i.e. the first SMILES)
+        df = pd.read_csv(file,header=None,index_col=False)
+        print(df)
+        #df = df.reset_index() # Will add the index as a column to generate an 'id' column
+        #print(df)
+        first_element = df.iloc[0, 0]  # First row, second column (i.e. the first SMILES)
         # Check if the first element is a valid SMILES
         cs_utils.check_smiles(first_element) # Will stop execution if 'first_element' not a valid SMILES
         
