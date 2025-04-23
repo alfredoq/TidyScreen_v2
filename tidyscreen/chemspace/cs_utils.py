@@ -51,10 +51,12 @@ def process_input_df(df):
 
     # Enumerate stereoisomers in the input df
     df_enumerated = enumerate_stereoisomers(df)
-    
     df_ready = compute_inchi_key_for_whole_df(df_enumerated)
 
-    return df_ready
+    # Delete duplicated molecules based on inchi_key
+    df_ready_checked = df_ready.drop_duplicates(subset='inchi_key', keep='first')
+    
+    return df_ready_checked
 
 def compute_inchi_key_for_whole_df(df):
     pandarallel.initialize(progress_bar=False)
