@@ -7,19 +7,18 @@ import sys
 import pandas as pd
 from tidyscreen import tidyscreen
 
-def prepare_md_initial_files(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm,solvent, dynamics=1):
+def prepare_md_initial_files(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm,solvent,min_steps,dynamics=1):
     ## Prepare the corresponding 'tleap' input file
     # These preparations is common for fingerprints and MD assays
     
     if solvent == "explicit":
         prepare_tleap_input(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm)
-        prepare_min1_input(assay_folder)
-        prepare_min2_input(assay_folder)
+        prepare_min1_input(assay_folder,min_steps)
+        prepare_min2_input(assay_folder,min_steps)
     
     if solvent == "implicit":
         prepare_tleap_input_implicit_solvent(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm)
-        prepare_min1_input_implicit_solvent(assay_folder)
-        prepare_min2_input_implicit_solvent(assay_folder)
+        prepare_min1_input_implicit_solvent(assay_folder,min_steps)
 
     if dynamics == 1: # This will only be executed for simulations involving MD preparations
         prepare_heat1_input(assay_folder)
@@ -36,8 +35,8 @@ def prepare_tleap_input(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_p
         tleap_input.write(f"UNL = loadmol2 {assay_folder}/{mol2_lig_parm} \n")
         tleap_input.write(f"loadamberparams {assay_folder}/{frcmod_lig_parm} \n")
         tleap_input.write(f"COM = loadpdb {complex_pdb_file} \n")
-        tleap_input.write(f"addions Na+ COM 0 \n")
-        tleap_input.write(f"addions Cl- COM 0 \n")
+        tleap_input.write(f"addions COM Na+ 0 \n")
+        tleap_input.write(f"addions COM Cl- 0 \n")
         tleap_input.write("solvateoct COM TIP3PBOX 10.0 \n")
         tleap_input.write(f"saveamberparm COM {assay_folder}/complex.prmtop {assay_folder}/complex.inpcrd \n")
         tleap_input.write("quit")
@@ -58,17 +57,13 @@ def prepare_tleap_input_implicit_solvent(assay_folder,complex_pdb_file,mol2_lig_
     
     tleap_input.close()
 
-def prepare_min2_input_implicit_solvent(assay_folder):
-
-    pass
-
-def prepare_min1_input(assay_folder):
+def prepare_min1_input(assay_folder,min_steps):
     with open(f"{assay_folder}/min1.in","w") as min1_input:    
         min1_input.write("Initial minimization of water molecules\n")
         min1_input.write("&cntrl\n")
         min1_input.write("imin = 1,\n")
-        min1_input.write("maxcyc = 5000,\n")
-        min1_input.write("ncyc = 2500,\n")
+        min1_input.write(f"maxcyc = {min_steps},\n")
+        min1_input.write(f"ncyc = {int(min_steps/2)},\n")
         min1_input.write("ntb = 1,\n")
         min1_input.write("ntr = 1,\n")
         min1_input.write("cut = 8.0,\n")
@@ -79,14 +74,14 @@ def prepare_min1_input(assay_folder):
     
     min1_input.close()
 
-def prepare_min1_input_implicit_solvent(assay_folder):
+def prepare_min1_input_implicit_solvent(assay_folder,min_steps):
 
     with open(f"{assay_folder}/min1.in","w") as min1_input:    
         min1_input.write("Initial minimization of water molecules\n")
         min1_input.write("&cntrl\n")
         min1_input.write("imin = 1,\n")
-        min1_input.write("maxcyc = 5000,\n")
-        min1_input.write("ncyc = 2500,\n")
+        min1_input.write(f"maxcyc = {min_steps},\n")
+        min1_input.write(f"ncyc = {int(min_steps/2)},\n")
         min1_input.write("ntx = 1,\n")
         min1_input.write("igb = 8,\n")
         min1_input.write("gbsa = 3,\n")
@@ -100,13 +95,13 @@ def prepare_min1_input_implicit_solvent(assay_folder):
     
     min1_input.close()
 
-def prepare_min2_input(assay_folder):
+def prepare_min2_input(assay_folder,min_steps):
     with open(f"{assay_folder}/min2.in","w") as min2_input:
         min2_input.write("Initial minimization of water molecules\n")
         min2_input.write("&cntrl\n")
         min2_input.write("imin = 1,\n")
-        min2_input.write("maxcyc = 5000,\n")
-        min2_input.write("ncyc = 2500,\n")
+        min2_input.write(f"maxcyc = {min_steps},\n")
+        min2_input.write(f"ncyc = {int(min_steps)},\n")
         min2_input.write("ntb = 1,\n")
         min2_input.write("ntr = 0,\n")
         min2_input.write("cut = 8.0,\n")
@@ -260,6 +255,35 @@ def prepare_md_execution_script(assay_folder):
         exec_file.write(f"{pmemd_cuda_path} -O -i equi.in -o equi.out -p complex.prmtop -c heat2.crd -r equi.crd -ref heat2.crd \n")
         exec_file.write("echo 'Executing Production'\n")
         exec_file.write(f"{pmemd_cuda_path}  -O -i prod.in -o prod.out -p complex.prmtop -c equi.crd -r prod.crd -x prod.nc -ref equi.crd \n")
+
+    exec_file.close()
+
+def prepare_md_execution_script(assay_folder,mendieta_assays_path="NONE"):
+    with open(f'{assay_folder}/md_execution_mendieta.sh','a') as exec_file:
+        exec_file.write("#!/bin/bash \n")
+        exec_file.write("### Nombre de la tarea\n")
+        exec_file.write("#SBATCH --job-name=nombre\n")
+        exec_file.write("### Cantidad de nodos a usar\n")
+        exec_file.write("#SBATCH --nodes=1\n")
+        exec_file.write("### GPUs por nodo (<= 2)\n")
+        exec_file.write("### OJO: Todos los procesos en un nodo ven ambas GPU con gpu:2!\n")
+        exec_file.write("#SBATCH --gres=gpu:1\n")
+        exec_file.write("### Procesos por nodo\n")
+        exec_file.write("#SBATCH --ntasks-per-node=1\n")
+        exec_file.write("### Cores por proceso (OpenMP/Pthreads/etc)\n")
+        exec_file.write("### Recordar exportar OMP_NUM_THREADS/MKL_NUM_THREADS/etc con el mismo valor\n")
+        exec_file.write("#SBATCH --cpus-per-task=1\n")
+        exec_file.write("export OMP_NUM_THREADS=1\n")
+        exec_file.write("### Tiempo de ejecucion. Formato dias-horas:minutos. Maximo una semana.\n")
+        exec_file.write("#SBATCH --time 7-0:00\n")
+        exec_file.write("### Environment setup\n")
+        exec_file.write(". /etc/profile\n")
+        exec_file.write("### Environment modules\n")
+        exec_file.write("module load cuda/5.0\n")
+        exec_file.write("### Ejecutar la tarea\n")
+        exec_file.write("srun algun_programa_gpu\n")
+
+    exec_file.close()
 
 def run_tleap_input(assay_folder,input_file):
     
