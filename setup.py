@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(name='tidyscreen',
-      version='0.0.9',
+      version='0.1.0',
       description='A library to manage data associated to drug screening campaigns',
       long_description=open('README.md').read().strip(),
       author="MedChemLab staff",
