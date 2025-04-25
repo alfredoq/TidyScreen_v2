@@ -258,7 +258,7 @@ def prepare_md_execution_script(assay_folder):
 
     exec_file.close()
 
-def prepare_md_execution_script(assay_folder,mendieta_assays_path="NONE"):
+def prepare_md_execution_script_mendieta(assay_folder,mendieta_assays_path="NONE"):
     with open(f'{assay_folder}/md_execution_mendieta.sh','a') as exec_file:
         exec_file.write("#!/bin/bash \n")
         exec_file.write("### Nombre de la tarea\n")
