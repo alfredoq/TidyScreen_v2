@@ -49,7 +49,7 @@ class MolDyn:
             ligand_frcmod_ref_file = f'{ligand_prefix}.frcmod'
             
             # Prepare the input files to compute prepare the .prmtop and .inpcrd
-            moldyn_utils.prepare_md_initial_files(assay_folder,complex_pdb_file,ligand_mol2_ref_file,ligand_frcmod_ref_file, solvent="explicit",dynamics=1)
+            moldyn_utils.prepare_md_initial_files(assay_folder,complex_pdb_file,ligand_mol2_ref_file,ligand_frcmod_ref_file, solvent="explicit",min_steps=5000,dynamics=1)
             
             # Execute tLeap initialization
             moldyn_utils.run_tleap_input(assay_folder,input_file='tleap.in')
