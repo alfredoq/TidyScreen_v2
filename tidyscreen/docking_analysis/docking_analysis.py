@@ -36,3 +36,14 @@ class DockingAnalysis:
         elapsed_time = f"{end_time - start_time:.2f}"
         
         print(f"Finished computing the fingerprint for the docked pose. - {elapsed_time} seconds")
+        
+    def compute_fingerprints_for_whole_assay(self,assay_id,clean_files=1,solvent="implicit",min_steps=5000):
+        assay_folder = self.docking_assays_path + f'/assay_{assay_id}'
+        assay_results_db = f"{assay_folder}/assay_{assay_id}.db"
+        
+        docked_poses_list = docking_analysis_utils.retrieve_docked_poses_id(assay_results_db)
+        
+        ## Compute the fingerprints using a for loop:
+        for pose in docked_poses_list:
+            DockingAnalysis.compute_fingerprints_for_docked_pose(self,assay_id,pose,clean_files=1,solvent="implicit",min_steps=5000)
+            

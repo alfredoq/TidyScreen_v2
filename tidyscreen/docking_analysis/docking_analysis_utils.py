@@ -283,7 +283,7 @@ def compute_fingerprints(assay_folder,complex_pdb_file,receptor_filename,clean_f
     ligand_mol2_ref_file = f'{ligand_prefix}_gaff.mol2'
     ligand_frcmod_ref_file = f'{ligand_prefix}.frcmod'
     # Prepare the input files to compute prepare the .prmtop and .inpcrd
-    md_utils.prepare_md_initial_files(assay_folder,complex_pdb_file,ligand_mol2_ref_file,ligand_frcmod_ref_file, solvent,min_steps, dynamics=0)
+    md_utils.prepare_md_initial_files(assay_folder,complex_pdb_file,ligand_mol2_ref_file,ligand_frcmod_ref_file, solvent,min_steps,dynamics=0)
     # Execute tLeap initialization
     md_utils.run_tleap_input(assay_folder,input_file='tleap.in')
     # Perform minimizations
@@ -308,3 +308,14 @@ def compute_fingerprints(assay_folder,complex_pdb_file,receptor_filename,clean_f
 
     # renumber the output of MMGBSA according to the original receptor.
     md_utils.renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename)
+    
+def retrieve_docked_poses_id(results_db):
+    conn = tidyscreen.connect_to_db(results_db)
+    cursor = conn.cursor()
+    
+    # Retrieve all rows
+    cursor.execute(f"SELECT Pose_ID FROM Results")
+    docked_poses_list = [row[0] for row in cursor.fetchall()]
+    
+    return docked_poses_list
+    
