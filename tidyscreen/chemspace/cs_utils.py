@@ -35,7 +35,7 @@ def process_input_df(df):
     #'index': 'id', # Renaming the index column
     0: 'SMILES',  # Renaming 'A' to 'New_A'
     1: 'name',  # Renaming 'B' to 'New_B'
-    2: 'flag'   # 'C' doesn't exist, it will be created
+    2: 'flag',   # 'C' doesn't exist, it will be created
     }
     
     for old_col, new_col in rename_dict.items():
@@ -55,7 +55,7 @@ def process_input_df(df):
 
     # Delete duplicated molecules based on inchi_key
     df_ready_checked = df_ready.drop_duplicates(subset='inchi_key', keep='first')
-    
+
     return df_ready_checked
 
 def compute_inchi_key_for_whole_df(df):
@@ -75,21 +75,25 @@ def compute_inchi_key(smiles):
 
 def enumerate_stereoisomers(df):
     options = StereoEnumerationOptions(onlyUnassigned=True, unique=True, maxIsomers=32)
-    df_enumerated = pd.DataFrame(columns=['id','SMILES','name','flag',"stereoisomers_nbr"])
+    df_enumerated = pd.DataFrame(columns=['id','SMILES','name','flag',"stereo_nbr","stereo_config"])
     for index, row in df.iterrows():
         mol = Chem.MolFromSmiles(row["SMILES"])
         mol_hs = Chem.AddHs(mol)
         isomers = list(EnumerateStereoisomers(mol_hs,options=options))
-        #counter = 1
         for isomer in isomers:
             isomer_no_hs = Chem.RemoveHs(isomer)
             smiles = Chem.MolToSmiles(isomer_no_hs)
-            df_enumerated = df_enumerated._append({"SMILES":smiles,"name":row["name"],"flag":row["flag"],"stereoisomers_nbr":len(isomers)},ignore_index=True)
-
+            # Get the stereo configuration of the corresponding isomer
+            stereo_config_tuple = Chem.FindMolChiralCenters(isomer,force=True,includeUnassigned=True,useLegacyImplementation=True)
+            # Wil convert the list containing stereo into string for storage in SQL database
+            stereo_config_list = [item[1] for item in stereo_config_tuple]
+            stereo_config = ','.join(stereo_config_list)
+            # Append the corresponding registry to the dataframe
+            df_enumerated = df_enumerated._append({"SMILES":smiles,"name":row["name"],"flag":row["flag"],"stereo_nbr":len(isomers),"stereo_config":stereo_config},ignore_index=True)
+            
     # Create the if column by assigning the index of the enumerated df
     df_enumerated['id'] = df_enumerated.index
-    df_enumerated = df_enumerated[['id'] + [c for c in df.columns if c != 'id']] # This will make the 'id' column the first one
-        
+
     return df_enumerated
 
 def check_table_presence(conn,table_name):
