@@ -2,6 +2,7 @@ from tidyscreen import tidyscreen as tidyscreen
 from tidyscreen.chemspace import cs_utils as cs_utils
 import os
 import pandas as pd
+from tidyscreen.GeneralFunctions import general_functions as general_functions
 
 class ChemSpace:
     def __init__(self, project):
@@ -79,3 +80,13 @@ class ChemSpace:
             cs_utils.retrieve_blob_ligfiles(db,table_name,outpath,ligname,blob_colname="pdbqt_file")
         
         print(f"Ligands extracted to: \n \t '{outpath}")
+
+    def subset_chemspace_table(self,source_table,dest_table,colname,filter):
+        db = f"{self.project.proj_folders_path['chemspace']['processed_data']}/chemspace.db"
+        try:
+            general_functions.subset_table(db,source_table,dest_table,colname,filter)
+            print(f"Succesfully subseted table: {source_table}")
+        except Exception as error:
+            print(f"Error substing table {source_table} \n {error}")
+            
+

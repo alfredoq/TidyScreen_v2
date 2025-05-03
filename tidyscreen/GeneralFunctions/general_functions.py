@@ -1,4 +1,6 @@
 import sys
+import sqlite3
+from tidyscreen import tidyscreen as tidyscreen
 
 def renumber_pdb_file_using_crystal(crystal_file,target_file,renumbered_file,resname_field=3,resnumber_field=5):
     crystal_dict = get_pdb_sequence_dict(crystal_file,resname_field=3,resnumber_field=5)
@@ -71,4 +73,69 @@ def renumber_pdb_file(target_file,renumbered_file,combined_dict,resname_field,re
                 if line_split[0] == "TER":
                     output_file.write(line)
                             
+
+## Commented since this is a backup version
+# def subset_table(db,source_table,dest_table,colname,filter):
+#     conn = tidyscreen.connect_to_db(db) # Connect to the main database
+#     cursor = conn.cursor()
     
+    
+#     # Will subset a table and dump to a new table - Note: originalP IDs are mantained so this table will be temporary until reindexed
+#     cursor.execute(f"""CREATE TABLE IF NOT EXISTS {dest_table}_temp AS
+#                    SELECT * FROM {source_table} WHERE {colname} = '{filter}';""")
+
+#     # Reset the index of temp table
+#     reset_id_in_column(conn,f"{dest_table}_temp",dest_table)
+
+def subset_table(db,source_table,dest_table,colname,filter):
+    conn = tidyscreen.connect_to_db(db) # Connect to the main database
+    cursor = conn.cursor()
+    
+    # Build a WHERE clause dynamically to use all columns
+    where_clause = ' AND '.join([f"{col} = ?" for col in colname])
+
+    # Construct the full query
+    query = f"""CREATE TABLE IF NOT EXISTS {dest_table}_temp AS
+                SELECT * FROM {source_table} WHERE {where_clause};"""
+
+    # Execute with parameters
+    cursor.execute(query, filter)
+
+    # Reset the index of temp table
+    reset_id_in_column(conn,f"{dest_table}_temp",dest_table)
+
+
+def reset_id_in_column(conn,source_table,target_table):
+
+    # Get all column names except 'id'
+    cursor = conn.cursor()
+    cursor.execute(f"PRAGMA table_info({target_table})")
+    columns = [row[1] for row in cursor.fetchall() if row[1] != 'id']
+    col_str = ', '.join(columns)
+
+    # Drop the target table if it exists
+    cursor.execute(f"DROP TABLE IF EXISTS {target_table}")
+
+    # Recreate the target table with same schema, resetting the id
+    # This assumes the schema is known or you can adapt it as needed
+    # Here's an example assuming same schema except for id
+    # Use PRAGMA or manual schema copy logic here if needed
+    cursor.execute(f"""
+        CREATE TABLE {target_table} (
+            'id' INTEGER PRIMARY KEY AUTOINCREMENT,
+            {', '.join(f"{col} TEXT" for col in columns)}  -- adjust types if needed
+        )
+    """)
+
+    # Insert rows without id
+    cursor.execute(f"""
+        INSERT INTO {target_table} ({col_str})
+        SELECT {col_str} FROM {source_table}
+    """)
+
+    # Drop the temporary table after reindexing
+    cursor.execute(f"DROP TABLE IF EXISTS {source_table}")
+
+
+    conn.commit()
+    conn.close()
