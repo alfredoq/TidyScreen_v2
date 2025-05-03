@@ -21,10 +21,11 @@ class ChemSpace:
         first_element = df.iloc[0, 0]  # First row, second column (i.e. the first SMILES)
         # Check if the first element is a valid SMILES
         cs_utils.check_smiles(first_element) # Will stop execution if 'first_element' not a valid SMILES
-        
+        # Make all the processing on the generated df
         df = cs_utils.process_input_df(df)
+        # Store the final df into de database
         cs_utils.save_df_to_db(f"{self.cs_db_path}/chemspace.db",df,target_table_name)
-
+        # Inform processing
         print(f"Table '{target_table_name}' created in: '{self.cs_db_path}/chemspace.db'")
 
     def list_ligand_tables(self):
