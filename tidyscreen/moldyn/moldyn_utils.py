@@ -64,6 +64,7 @@ def prepare_min1_input(assay_folder,min_steps):
         min1_input.write("imin = 1,\n")
         min1_input.write(f"maxcyc = {min_steps},\n")
         min1_input.write(f"ncyc = {int(min_steps/2)},\n")
+        min1_input.write("ntxo = 1,\n")
         min1_input.write("ntb = 1,\n")
         min1_input.write("ntr = 1,\n")
         min1_input.write("cut = 8.0,\n")
@@ -83,6 +84,7 @@ def prepare_min1_input_implicit_solvent(assay_folder,min_steps):
         min1_input.write(f"maxcyc = {min_steps},\n")
         min1_input.write(f"ncyc = {int(min_steps/2)},\n")
         min1_input.write("ntx = 1,\n")
+        min1_input.write("ntxo = 1,\n")
         min1_input.write("igb = 8,\n")
         min1_input.write("gbsa = 3,\n")
         min1_input.write("ntb = 0,\n")
@@ -102,6 +104,7 @@ def prepare_min2_input(assay_folder,min_steps):
         min2_input.write("imin = 1,\n")
         min2_input.write(f"maxcyc = {min_steps},\n")
         min2_input.write(f"ncyc = {int(min_steps)},\n")
+        min2_input.write("ntxo = 1,\n")
         min2_input.write("ntb = 1,\n")
         min2_input.write("ntr = 0,\n")
         min2_input.write("cut = 8.0,\n")
@@ -389,8 +392,12 @@ def renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename):
         print("Dictionaries for renumbering do NOT match. Stopping...")
         sys.exit()
 
-    # Process both dictionaries and output the final .csv file
+    ## Process both dictionaries and output the final .csv file
+    # This will out a .csv file with components and renumbered residues values
     prepare_mmgbsa_renumbered_output(receptor_sequence_dict,decomp_file_dict,assay_folder)
+    # This will out a .csv file with components and amber residues values
+    prepare_mmgbsa_original_output(receptor_sequence_dict,decomp_file_dict,assay_folder)
+
 
 def parse_mmgbsa_output(filename):
     with open(filename,'r') as input_file:
@@ -413,15 +420,32 @@ def parse_mmgbsa_output(filename):
     
     return file_resname_resnum_dict
 
-def prepare_mmgbsa_renumbered_output(dict1,dict2,assay_folder):
 
-    with open(f'{assay_folder}/mmgbsa_DECOMP_renum.csv','w') as output_file:
+def prepare_mmgbsa_renumbered_output(dict1,dict2,assay_folder):
+    # This will write a .csv file with the components with renumbered residue numbers
+    with open(f'{assay_folder}/mmgbsa_DECOMP_renum.csv','w') as output_file_renum:
         counter = 1
         for key, value in dict2.items():
             resname,resnum = dict1[int(key)].split('_')
             vdw,ele,gas,pol_solv,np_solv,total = value.split('_')[2:]
             # Write a record into the output .csv file
             record = f"{resname},{resnum},{vdw},{ele},{gas},{pol_solv},{np_solv},{total}\n"
+            # Write the header for the first record
+            if counter == 1:
+                output_file_renum.write("resname,resnumber,vdw,ele,gas,pol_solv,np_solv,total\n")
+                counter += 1
+
+            output_file_renum.write(record)
+
+def prepare_mmgbsa_original_output(dict1,dict2,assay_folder):
+    # This will write a .csv file with the components with renumbered residue numbers
+    with open(f'{assay_folder}/mmgbsa_DECOMP.csv','w') as output_file:
+        counter = 1
+        for key, value in dict2.items():
+            resname,resnum = dict1[int(key)].split('_')
+            vdw,ele,gas,pol_solv,np_solv,total = value.split('_')[2:]
+            # Write a record into the output .csv file
+            record = f"{resname},{key},{vdw},{ele},{gas},{pol_solv},{np_solv},{total}\n"
             # Write the header for the first record
             if counter == 1:
                 output_file.write("resname,resnumber,vdw,ele,gas,pol_solv,np_solv,total\n")

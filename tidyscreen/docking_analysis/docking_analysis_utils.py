@@ -7,6 +7,8 @@ import os
 from tidyscreen.chemspace import chemspace as chemspace
 from tidyscreen.moldyn import moldyn_utils as md_utils
 import shutil
+import MDAnalysis as mda
+import prolif as plf
 
 def check_docking_assay(registries_db,assay_id):
     # Check if the 'assay_id' exists in the registers database
@@ -277,7 +279,7 @@ def retrieve_table_name_from_assay_id(self,assay_id):
     
     return table_name
     
-def compute_fingerprints(assay_folder,complex_pdb_file,receptor_filename,clean_files,solvent,min_steps):
+def compute_fingerprints(assay_folder,complex_pdb_file,receptor_filename,solvent,min_steps):
     # From the complex filename prepare the corresponding files naming:
     ligand_prefix = complex_pdb_file.split('/')[-1].split('_')[1]
     ligand_mol2_ref_file = f'{ligand_prefix}_gaff.mol2'
@@ -298,16 +300,26 @@ def compute_fingerprints(assay_folder,complex_pdb_file,receptor_filename,clean_f
         md_utils.strip_waters(assay_folder,"min2.crd","complex.prmtop")
         # perform the MMPBSA analysis
         assay_folder, decomp_file = md_utils.compute_MMPBSA(assay_folder,"min2_strip.crd")
-    
+
+        # renumber the output of MMGBSA according to the original receptor.
+        md_utils.renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename)
+
+        # Return prmtop and minimized file
+        return f'{assay_folder}/complex_MMGBSA.prmtop', f'{assay_folder}/min2_strip.crd'
+        
     if solvent == "implicit":
         # perform the MMPBSA analysis
         assay_folder, decomp_file = md_utils.compute_MMPBSA(assay_folder,"min1.crd")
-    # perform a cleaning of the target directory if required
-    if clean_files == 1:
-        md_utils.clean_MMPBSA_files(assay_folder)
+        
+        # renumber the output of MMGBSA according to the original receptor.
+        md_utils.renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename)
 
-    # renumber the output of MMGBSA according to the original receptor.
-    md_utils.renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename)
+        # Return prmtop and minimized file
+        return f'{assay_folder}/complex_MMGBSA.prmtop', f'{assay_folder}/min1.crd'
+    
+    # perform a cleaning of the target directory if required
+    # if clean_files == 1:
+    #     md_utils.clean_MMPBSA_files(assay_folder)
     
 def retrieve_docked_poses_id(results_db):
     conn = tidyscreen.connect_to_db(results_db)
@@ -318,4 +330,22 @@ def retrieve_docked_poses_id(results_db):
     docked_poses_list = [row[0] for row in cursor.fetchall()]
     
     return docked_poses_list
-    
+
+def compute_prolif_fps_for_docked_pose(prmtop_file,crd_file):
+        # Load the input crd file as a MDAnalysis universe object
+        u = mda.Universe(prmtop_file,crd_file,format='RESTRT')
+        # Select the protein and create the corresponding ProLIF object
+        prot = u.select_atoms("protein")
+        protein_mol = plf.Molecule.from_mda(prot)
+        # Select the ligand and create the corresponding ProLIF object
+        lig = u.select_atoms("resname UNL")
+        ligand_mol = plf.Molecule.from_mda(lig)
+        # Define all available interaction for computation
+        fp = plf.Fingerprint(['Anionic','CationPi','Cationic','EdgeToFace','FaceToFace','HBAcceptor','HBDonor','Hydrophobic','MetalAcceptor','MetalDonor','PiCation','PiStacking','VdWContact','XBAcceptor','XBDonor'])
+        # Compute the fingerprints
+        fp = plf.Fingerprint()
+        print("Computing ProLIF Fingerprints")
+        fp.run_from_iterable([ligand_mol], protein_mol)
+        # Generate the fingerprints dataframe
+        fps_df = fp.to_dataframe()
+        print(fps_df)
