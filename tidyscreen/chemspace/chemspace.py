@@ -1,8 +1,11 @@
+import warnings
+warnings.filterwarnings("ignore")
 from tidyscreen import tidyscreen as tidyscreen
 from tidyscreen.chemspace import cs_utils as cs_utils
 import os
 import pandas as pd
 from tidyscreen.GeneralFunctions import general_functions as general_functions
+
 
 class ChemSpace:
     def __init__(self, project):
@@ -58,7 +61,7 @@ class ChemSpace:
         # Clean the /tmp directory
         #cs_utils.clean_dir("/tmp")
         
-    def retrieve_mols_in_table(self,table_name,outpath=None,ligname=None,pdb=1,mol2_sybyl=1,mol2_gaff2=1,frcmod=1,pdbqt=1):
+    def retrieve_mols_in_table(self,table_name,outpath=None,ligname=None,pdb=1,mol2_sybyl=1,mol2_gaff2=1,frcmod=1,pdbqt=1,inform=1):
         database_folder = self.project.proj_folders_path["chemspace"]["processed_data"]
         db = f"{database_folder}/chemspace.db"
         
@@ -79,7 +82,8 @@ class ChemSpace:
         if pdbqt == 1:
             cs_utils.retrieve_blob_ligfiles(db,table_name,outpath,ligname,blob_colname="pdbqt_file")
         
-        print(f"Ligands extracted to: \n \t '{outpath}")
+        if inform == 1:
+            print(f"Ligands extracted to: \n \t '{outpath}")
 
     def subset_chemspace_table(self,source_table,dest_table,colname,filter):
         db = f"{self.project.proj_folders_path['chemspace']['processed_data']}/chemspace.db"

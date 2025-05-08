@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore")
 import sys
 from tidyscreen import tidyscreen as tidyscreen
 from ringtail import RingtailCore
@@ -9,6 +11,9 @@ from tidyscreen.moldyn import moldyn_utils as md_utils
 import shutil
 import MDAnalysis as mda
 import prolif as plf
+import csv
+from tidyscreen.GeneralFunctions import general_functions as general_functions
+
 
 def check_docking_assay(registries_db,assay_id):
     # Check if the 'assay_id' exists in the registers database
@@ -145,7 +150,6 @@ def create_fingerprints_analysis_folder(self,assay_folder,assay_id,results_pose_
     # Get the receptor filename from the dlg file
     receptor_path = f'{assay_folder}/receptor'
     receptor_filename = get_receptor_name_from_dlg(dlg_file,receptor_path,output_path)
-    print(receptor_filename)
     # Generate the complexed file into de corresponding folder
     complex_pdb_file = generate_complex_from_pose(ligname,pose_pdb_file, output_path, receptor_filename,results_pose_id)
     # Retrieve table name matching docking assay
@@ -153,15 +157,13 @@ def create_fingerprints_analysis_folder(self,assay_folder,assay_id,results_pose_
     # Retrieve .mol2 and .frcmod files
     retrieve_tleap_ligand_param_files(self,table_name,output_path,ligname,pdb=1,mol2_sybyl=1,mol2_gaff2=1,frcmod=1,pdbqt=1)
     
-    return complex_pdb_file, output_path, receptor_filename
+    return complex_pdb_file, output_path, receptor_filename, ligname
     
 def retrieve_dlg_file(assay_folder,assay_id,results_pose_id):
     """
     This function will return the name of the .dlg file corresponding the provided 'results_pose_id', as well as the 'run_number' corresponding the 'pose_id'
     """
-    
     results_db_file = f"{assay_folder}/assay_{assay_id}.db"
-    print(results_db_file)
     conn = tidyscreen.connect_to_db(results_db_file)
     cursor = conn.cursor()
     cursor.execute(f"SELECT LigName, run_number FROM Results WHERE Pose_ID = {results_pose_id}")
@@ -267,7 +269,7 @@ def generate_complex_from_pose(ligname,pose_pdb_file, output_path, receptor_file
     return complex_output_file
             
 def retrieve_tleap_ligand_param_files(self,table_name,output_path,ligname,pdb,mol2_sybyl,mol2_gaff2,frcmod,pdbqt):
-    chemspace.ChemSpace.retrieve_mols_in_table(self,table_name,output_path,ligname,pdb,mol2_sybyl,mol2_gaff2,frcmod,pdbqt)
+    chemspace.ChemSpace.retrieve_mols_in_table(self,table_name,output_path,ligname,pdb,mol2_sybyl,mol2_gaff2,frcmod,pdbqt,inform=0)
 
 def retrieve_table_name_from_assay_id(self,assay_id):
     registries_db = f"{self.project.proj_folders_path['docking']['docking_registers']}/docking_registries.db"
@@ -294,7 +296,7 @@ def compute_fingerprints(assay_folder,complex_pdb_file,receptor_filename,solvent
     md_utils.write_mmgbsa_input(assay_folder)
     # Use ante ante-MMPBSA.py to create the files required for computation
     md_utils.apply_ante_MMPBSA(assay_folder)
-    # Strip solven (if explicit model was used) and/or compute the MMPBSA 
+    # Strip solvent (if explicit model was used) and/or compute the MMPBSA 
     if solvent == "explicit":
         # Strip waters from min2.crd to
         md_utils.strip_waters(assay_folder,"min2.crd","complex.prmtop")
@@ -302,24 +304,44 @@ def compute_fingerprints(assay_folder,complex_pdb_file,receptor_filename,solvent
         assay_folder, decomp_file = md_utils.compute_MMPBSA(assay_folder,"min2_strip.crd")
 
         # renumber the output of MMGBSA according to the original receptor.
-        md_utils.renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename)
-
+        decomp_csv_file,decomp_csv_file_renum = md_utils.renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename)
+        
+        # Create a dictionary of resname/resnumber tleap vs. crystal
+        tleap_vs_cristal_reference_dict = generate_tleap_vs_cristal_reference_dict(decomp_csv_file,decomp_csv_file_renum)
+        
         # Return prmtop and minimized file
-        return f'{assay_folder}/complex_MMGBSA.prmtop', f'{assay_folder}/min2_strip.crd'
+        return f'{assay_folder}/complex_MMGBSA.prmtop', f'{assay_folder}/min2_strip.crd', tleap_vs_cristal_reference_dict, decomp_csv_file_renum
         
     if solvent == "implicit":
         # perform the MMPBSA analysis
         assay_folder, decomp_file = md_utils.compute_MMPBSA(assay_folder,"min1.crd")
         
         # renumber the output of MMGBSA according to the original receptor.
-        md_utils.renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename)
+        decomp_csv_file,decomp_csv_file_renum = md_utils.renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename)
+
+        # Create a dictionary of resname/resnumber tleap vs. crystal
+        tleap_vs_cristal_reference_dict = generate_tleap_vs_cristal_reference_dict(decomp_csv_file,decomp_csv_file_renum)
 
         # Return prmtop and minimized file
-        return f'{assay_folder}/complex_MMGBSA.prmtop', f'{assay_folder}/min1.crd'
+        return f'{assay_folder}/complex_MMGBSA.prmtop', f'{assay_folder}/min1.crd', tleap_vs_cristal_reference_dict, decomp_csv_file_renum
     
-    # perform a cleaning of the target directory if required
-    # if clean_files == 1:
-    #     md_utils.clean_MMPBSA_files(assay_folder)
+def generate_tleap_vs_cristal_reference_dict(decomp_file,decomp_file_renum):
+    
+    with open(decomp_file, newline='') as f1, open(decomp_file_renum,newline='') as f2:
+        reader1 = csv.reader(f1)
+        reader2 = csv.reader(f2)
+        
+        # This will skip the first line in both files since it corresponds to the header
+        next(reader1)
+        next(reader2)
+        
+        # Create the dictionary by zipping both readers together
+        tleap_vs_cristal_reference_dict = {
+            f"{row1[0]}{row1[1]}": f"{row2[0]}{row2[1]}"
+            for row1, row2 in zip(reader1, reader2)
+        }
+
+    return tleap_vs_cristal_reference_dict
     
 def retrieve_docked_poses_id(results_db):
     conn = tidyscreen.connect_to_db(results_db)
@@ -331,7 +353,7 @@ def retrieve_docked_poses_id(results_db):
     
     return docked_poses_list
 
-def compute_prolif_fps_for_docked_pose(prmtop_file,crd_file):
+def compute_prolif_fps_for_docked_pose(prmtop_file,crd_file,interactions_list,tleap_vs_cristal_reference_dict):
         # Load the input crd file as a MDAnalysis universe object
         u = mda.Universe(prmtop_file,crd_file,format='RESTRT')
         # Select the protein and create the corresponding ProLIF object
@@ -341,11 +363,45 @@ def compute_prolif_fps_for_docked_pose(prmtop_file,crd_file):
         lig = u.select_atoms("resname UNL")
         ligand_mol = plf.Molecule.from_mda(lig)
         # Define all available interaction for computation
-        fp = plf.Fingerprint(['Anionic','CationPi','Cationic','EdgeToFace','FaceToFace','HBAcceptor','HBDonor','Hydrophobic','MetalAcceptor','MetalDonor','PiCation','PiStacking','VdWContact','XBAcceptor','XBDonor'])
+        fp = plf.Fingerprint(interactions_list)
         # Compute the fingerprints
         fp = plf.Fingerprint()
         print("Computing ProLIF Fingerprints")
-        fp.run_from_iterable([ligand_mol], protein_mol)
+        fp.run_from_iterable([ligand_mol], protein_mol,progress=False)
         # Generate the fingerprints dataframe
         fps_df = fp.to_dataframe()
-        print(fps_df)
+        
+        return fps_df
+    
+def store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,complex_pdb_file,mmpbsa_decomp_csv_output,prolif_output_csv):
+    results_db = f"{assay_folder}/assay_{assay_id}.db"
+    conn = tidyscreen.connect_to_db(results_db)
+    cursor = conn.cursor()
+    
+    # Create table if it doesn't exist
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS fingerprints (
+        Pose_ID INTEGER PRIMARY KEY,
+        LigName TEXT,
+        complex_pdb_file BLOB,
+        mmpbsa_csv_file BLOB,
+        prolif_csv_file BLOB
+    )
+    ''')
+    
+    # Create blobs to store
+    complex_tar = general_functions.generate_tar_file(complex_pdb_file)
+    mmpbsa_decomp_csv_tar = general_functions.generate_tar_file(mmpbsa_decomp_csv_output)
+    prolif_csv_tar = general_functions.generate_tar_file(prolif_output_csv)
+    
+    try: 
+        # Insert a single row
+        fingerprint_data = (results_pose_id,ligname,complex_tar,mmpbsa_decomp_csv_tar,prolif_csv_tar)
+        cursor.execute('INSERT INTO fingerprints (Pose_ID, LigName, complex_pdb_file, mmpbsa_csv_file, prolif_csv_file) VALUES (?, ?, ?,?,?)', fingerprint_data)
+        # Commit changes and close connection
+        conn.commit()
+        conn.close()
+    
+    except Exception as error:
+        print(f"Fingerprints for pose: '{results_pose_id}' already exists. Passing...")
+        

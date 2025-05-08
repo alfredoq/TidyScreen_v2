@@ -1,6 +1,14 @@
+import warnings
+warnings.filterwarnings("ignore")
 import sys
 import sqlite3
 from tidyscreen import tidyscreen as tidyscreen
+import pandas as pd
+pd.set_option('future.no_silent_downcasting', True)
+from itertools import islice
+import tarfile
+import io
+
 
 def renumber_pdb_file_using_crystal(crystal_file,target_file,renumbered_file,resname_field=3,resnumber_field=5):
     crystal_dict = get_pdb_sequence_dict(crystal_file,resname_field=3,resnumber_field=5)
@@ -72,20 +80,6 @@ def renumber_pdb_file(target_file,renumbered_file,combined_dict,resname_field,re
                     
                 if line_split[0] == "TER":
                     output_file.write(line)
-                            
-
-## Commented since this is a backup version
-# def subset_table(db,source_table,dest_table,colname,filter):
-#     conn = tidyscreen.connect_to_db(db) # Connect to the main database
-#     cursor = conn.cursor()
-    
-    
-#     # Will subset a table and dump to a new table - Note: originalP IDs are mantained so this table will be temporary until reindexed
-#     cursor.execute(f"""CREATE TABLE IF NOT EXISTS {dest_table}_temp AS
-#                    SELECT * FROM {source_table} WHERE {colname} = '{filter}';""")
-
-#     # Reset the index of temp table
-#     reset_id_in_column(conn,f"{dest_table}_temp",dest_table)
 
 def subset_table(db,source_table,dest_table,colname,filter):
     conn = tidyscreen.connect_to_db(db) # Connect to the main database
@@ -103,7 +97,6 @@ def subset_table(db,source_table,dest_table,colname,filter):
 
     # Reset the index of temp table
     reset_id_in_column(conn,f"{dest_table}_temp",dest_table)
-
 
 def reset_id_in_column(conn,source_table,target_table):
 
@@ -139,3 +132,61 @@ def reset_id_in_column(conn,source_table,target_table):
 
     conn.commit()
     conn.close()
+
+def create_prolif_reference_df(tleap_vs_cristal_reference_dict,interactions_list):
+    # Generate the column names by combining each dict value with each list item (the interactions to be computed)
+    colnames = [f"{val}_{item}" for val in tleap_vs_cristal_reference_dict.values() for item in interactions_list]
+    all_residues_plf_df = pd.DataFrame(columns=colnames)
+    
+    return all_residues_plf_df
+
+def map_prolif_fingerprints_df_to_crystal_sequence(df,tleap_vs_cristal_reference_dict):
+            
+    # Drop the first level of the 'df' (corresponds to the Ligand name)
+    df.columns = df.columns.droplevel('ligand')  # or use the level number
+    
+    # Rename upper level of the multindex column ProLIF fingerprints df
+    df.columns = pd.MultiIndex.from_tuples([(tleap_vs_cristal_reference_dict.get(upper, upper), lower) for upper, lower in df.columns]
+)
+    # Combine names in the two levels of the fingerprints dataframe
+    df.columns = ['{}_{}'.format(upper, lower) for upper, lower in df.columns]
+    
+    return df
+
+def merge_calculated_and_reference_fingerprints_df(calc_df,reference_df):
+    
+    merged_df = pd.concat([reference_df, calc_df], ignore_index=True, sort=False).fillna(0)
+    merged_df = merged_df.replace({'True':1}).astype(int)
+    
+    return merged_df
+
+def generate_tar_file(file):
+    """Compress the pdb file into a TAR archive and return its binary content."""
+    filename = file.split("/")[-1]
+    tar_buffer = io.BytesIO()  # Create an in-memory buffer
+    with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
+        tar.add(file, arcname=filename)  # Store only filename in TAR
+    
+    return tar_buffer.getvalue()  # Return TAR file as binary
+
+def sort_table(assay_folder,assay_id,table,column):
+    results_db = f"{assay_folder}/assay_{assay_id}.db"
+    conn = tidyscreen.connect_to_db(results_db)
+    cursor = conn.cursor()
+    
+    # Replace 'your_table' and 'sort_column' with your table and column names
+    cursor.execute(f"""
+        CREATE TABLE sorted_table AS
+        SELECT * FROM {table}
+        ORDER BY {column};
+    """)
+    
+    # Drop the original table
+    cursor.execute(f"DROP TABLE {table};")
+    
+    # Rename the sorted table to original name
+    cursor.execute(f"ALTER TABLE sorted_table RENAME TO {table};")
+    
+    conn.commit()
+    conn.close()
+    

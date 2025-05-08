@@ -1,6 +1,9 @@
+import warnings
+warnings.filterwarnings("ignore")
 from tidyscreen.moldyn import moldyn_utils as moldyn_utils
 from tidyscreen.docking_analysis import docking_analysis_utils as docking_analysis_utils
 import sys
+
 
 class MolDyn:
     
