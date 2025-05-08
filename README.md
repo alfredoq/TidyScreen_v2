@@ -22,7 +22,13 @@ $ pip install git+https://github.com/alfredoq/TidyScreen_v2
 ```
 &nbsp;
 
+#### Updating the package
 
+We are constantly adding functionalities to TidyScreen and/or applying identified bugfixes. In order the make the available to the package installed in the corresponding conda environment (without loosing the project database :-P ), run the following command from the corresponding TidyScreen environment:
+
+```bash
+pip install --upgrade git+https://github.com/alfredoq/TidyScreen_v2
+```
 
 **Additional requirements not installed by CONDA**:
 
