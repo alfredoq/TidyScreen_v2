@@ -1,5 +1,3 @@
-# Main TidyScreen module
-
 import sys
 import os
 import sqlite3

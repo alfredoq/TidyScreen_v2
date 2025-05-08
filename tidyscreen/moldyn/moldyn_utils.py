@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore")
 import shutil
 import subprocess
 import glob
@@ -6,6 +8,7 @@ from tidyscreen.GeneralFunctions import general_functions as general_functions
 import sys
 import pandas as pd
 from tidyscreen import tidyscreen
+
 
 def prepare_md_initial_files(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm,solvent,min_steps,dynamics=1):
     ## Prepare the corresponding 'tleap' input file
@@ -64,6 +67,7 @@ def prepare_min1_input(assay_folder,min_steps):
         min1_input.write("imin = 1,\n")
         min1_input.write(f"maxcyc = {min_steps},\n")
         min1_input.write(f"ncyc = {int(min_steps/2)},\n")
+        min1_input.write("ntxo = 1,\n")
         min1_input.write("ntb = 1,\n")
         min1_input.write("ntr = 1,\n")
         min1_input.write("cut = 8.0,\n")
@@ -83,6 +87,7 @@ def prepare_min1_input_implicit_solvent(assay_folder,min_steps):
         min1_input.write(f"maxcyc = {min_steps},\n")
         min1_input.write(f"ncyc = {int(min_steps/2)},\n")
         min1_input.write("ntx = 1,\n")
+        min1_input.write("ntxo = 1,\n")
         min1_input.write("igb = 8,\n")
         min1_input.write("gbsa = 3,\n")
         min1_input.write("ntb = 0,\n")
@@ -102,6 +107,7 @@ def prepare_min2_input(assay_folder,min_steps):
         min2_input.write("imin = 1,\n")
         min2_input.write(f"maxcyc = {min_steps},\n")
         min2_input.write(f"ncyc = {int(min_steps)},\n")
+        min2_input.write("ntxo = 1,\n")
         min2_input.write("ntb = 1,\n")
         min2_input.write("ntr = 0,\n")
         min2_input.write("cut = 8.0,\n")
@@ -291,13 +297,14 @@ def run_tleap_input(assay_folder,input_file):
     command = f'{tleap_path} -f {assay_folder}/{input_file}' 
     subprocess.run(command, shell=True, capture_output=True, text=True)
     
-def perform_minimization(assay_folder,ligand_prefix,solvent):
+def perform_minimization(assay_folder,ligand_prefix,solvent,inform=1):
     # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
     pmemd_path = shutil.which('pmemd.cuda')
     # Run first minimization procedure
     try:
         command = f'{pmemd_path} -O -i {assay_folder}/min1.in -o {assay_folder}/min1.out -p {assay_folder}/complex.prmtop -c {assay_folder}/complex.inpcrd -r {assay_folder}/min1.crd -ref {assay_folder}/complex.inpcrd' 
-        print(f"Runnning 'min1' for ligand: '{ligand_prefix}'")
+        if inform == 1:
+            print(f"Runnning 'min1' for ligand: '{ligand_prefix}'")
         subprocess.run(command, shell=True, capture_output=True, text=True)
     except Exception as error:
         print(error)
@@ -305,7 +312,8 @@ def perform_minimization(assay_folder,ligand_prefix,solvent):
     if solvent == "explicit":
         # Run second minimization procedure
         command = f'{pmemd_path} -O -i {assay_folder}/min2.in -o {assay_folder}/min2.out -p {assay_folder}/complex.prmtop -c {assay_folder}/min1.crd -r {assay_folder}/min2.crd' 
-        print(f"Runnning 'min2' for ligand: '{ligand_prefix}'")
+        if inform == 1:
+            print(f"Runnning 'min2' for ligand: '{ligand_prefix}'")
         subprocess.run(command, shell=True, capture_output=True, text=True)
     
 def write_mmgbsa_input(assay_folder):
@@ -365,17 +373,32 @@ def compute_MMPBSA(assay_folder,traj_input):
     
     return assay_folder, f"{assay_folder}/mmgbsa_DECOMP.out"
     
-def clean_MMPBSA_files(assay_folder):
-    patterns_to_clean = ['*.inpcrd','*.prmtop','*.in','_MMPBSA*','*.crd','*frcmod','*.mol2','min*.out','*.log']
+def clean_MMPBSA_files(target_dir):
+    patterns_to_retain = ['renum.csv','_pose_']
     
-    for pattern in patterns_to_clean:
-        files_to_delete = glob.glob(os.path.join(assay_folder, pattern))
-        
-        for file_path in files_to_delete:
-            try:
+    # Construct a list of files to retain
+    files_to_retain = []
+    for pattern in patterns_to_retain:
+        for filename in os.listdir(target_dir):
+            if pattern in filename:
+                files_to_retain.append(filename)
+
+    # Delete file if not marked to be retained
+    for filename in os.listdir(target_dir):
+        if filename not in files_to_retain:
+            file_path = os.path.join(target_dir, filename)
+            if os.path.isfile(file_path):
                 os.remove(file_path)
-            except Exception as e:
-                pass
+    
+    
+    # for pattern in patterns_to_clean:
+    #     for filename in os.listdir(target_dir):
+    #         if pattern in filename:
+    #             for pattern_to_exclude in patterns_to_retain:
+    #                 if pattern_to_exclude not in filename
+    #                     file_path = os.path.join(target_dir, filename)
+    #                 if os.path.isfile(file_path):
+    #                 os.remove(file_path)
 
 def renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename):
     # Get a dictionary (resname_resnum) for the original receptor
@@ -389,8 +412,13 @@ def renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename):
         print("Dictionaries for renumbering do NOT match. Stopping...")
         sys.exit()
 
-    # Process both dictionaries and output the final .csv file
-    prepare_mmgbsa_renumbered_output(receptor_sequence_dict,decomp_file_dict,assay_folder)
+    ## Process both dictionaries and output the final .csv file
+    # This will out a .csv file with components and renumbered residues values
+    decomp_csv_file_renum = prepare_mmgbsa_renumbered_output(receptor_sequence_dict,decomp_file_dict,assay_folder)
+    # This will out a .csv file with components and amber residues values
+    decomp_csv_file = prepare_mmgbsa_original_output(receptor_sequence_dict,decomp_file_dict,assay_folder)
+
+    return decomp_csv_file,decomp_csv_file_renum
 
 def parse_mmgbsa_output(filename):
     with open(filename,'r') as input_file:
@@ -414,8 +442,9 @@ def parse_mmgbsa_output(filename):
     return file_resname_resnum_dict
 
 def prepare_mmgbsa_renumbered_output(dict1,dict2,assay_folder):
-
-    with open(f'{assay_folder}/mmgbsa_DECOMP_renum.csv','w') as output_file:
+    # This will write a .csv file with the components with renumbered residue numbers
+    renumbered_file = f'{assay_folder}/mmgbsa_DECOMP_renum.csv'
+    with open(renumbered_file,'w') as output_file_renum:
         counter = 1
         for key, value in dict2.items():
             resname,resnum = dict1[int(key)].split('_')
@@ -424,10 +453,31 @@ def prepare_mmgbsa_renumbered_output(dict1,dict2,assay_folder):
             record = f"{resname},{resnum},{vdw},{ele},{gas},{pol_solv},{np_solv},{total}\n"
             # Write the header for the first record
             if counter == 1:
+                output_file_renum.write("resname,resnumber,vdw,ele,gas,pol_solv,np_solv,total\n")
+                counter += 1
+
+            output_file_renum.write(record)
+
+    return renumbered_file
+
+def prepare_mmgbsa_original_output(dict1,dict2,assay_folder):
+    # This will write a .csv file with the components with renumbered residue numbers
+    original_file = f'{assay_folder}/mmgbsa_DECOMP.csv'
+    with open(original_file,'w') as output_file:
+        counter = 1
+        for key, value in dict2.items():
+            resname,resnum = dict1[int(key)].split('_')
+            vdw,ele,gas,pol_solv,np_solv,total = value.split('_')[2:]
+            # Write a record into the output .csv file
+            record = f"{resname},{key},{vdw},{ele},{gas},{pol_solv},{np_solv},{total}\n"
+            # Write the header for the first record
+            if counter == 1:
                 output_file.write("resname,resnumber,vdw,ele,gas,pol_solv,np_solv,total\n")
                 counter += 1
 
             output_file.write(record)
+
+    return original_file
 
 def create_md_assay_registry(db,docking_assay_id,docking_pose_id):
     # Try to create the 'dynamics_registries' table if it does not exist
@@ -450,5 +500,5 @@ def create_md_assay_registry(db,docking_assay_id,docking_pose_id):
     
     return last_assay_id
 
-def  create_md_assay_folder(assay_folder):
+def create_md_assay_folder(assay_folder):
     os.makedirs(f"{assay_folder}",exist_ok=True)

@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore")
 import sqlite3
 from rdkit import Chem
 from rdkit.Chem.Draw import MolsToGridImage, rdMolDraw2D
@@ -16,6 +18,7 @@ import subprocess
 from meeko import MoleculePreparation
 from meeko import PDBQTWriterLegacy
 from rdkit.Chem.EnumerateStereoisomers import EnumerateStereoisomers, StereoEnumerationOptions
+
 
 def check_smiles(smiles):
     
