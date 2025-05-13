@@ -11,7 +11,7 @@ class DockingAnalysis:
     
     def __init__(self, project):
         self.project = project
-        self.docking_assays_path = self.project.proj_folders_path["docking"]["docking_assays"]    
+        self.docking_assays_path = self.project.proj_folders_path["docking"]["docking_assays"]
         self.docking_registers_path = self.project.proj_folders_path["docking"]["docking_registers"]    
         self.docking_params_path = self.project.proj_folders_path["docking"]["params"]    
         self.receptor_models_path = self.project.proj_folders_path["docking"]["receptors"]
@@ -29,12 +29,12 @@ class DockingAnalysis:
         # Extract 1 pdb pose per cluster
         docking_analysis_utils.extract_1_pdb_per_cluster(assay_folder,results_db_file)
     
-    def compute_fingerprints_for_docked_pose(self,assay_id,results_pose_id,clean_files=1,clean_folder=1,solvent="implicit",min_steps=5000):
+    def compute_fingerprints_for_docked_pose(self,assay_id,results_pose_id,clean_files=1,clean_folder=1,solvent="implicit",min_steps=5000,stored_docked_poses=1):
     ### Start to log the time
         start_time = time.time()
     ### Create a custom folder for the analysis and copy/generate relevant files
         assay_folder = self.docking_assays_path + f'/assay_{assay_id}'
-        complex_pdb_file, output_path, receptor_filename, ligname  = docking_analysis_utils.create_fingerprints_analysis_folder(self,assay_folder,assay_id, results_pose_id)
+        complex_pdb_file, output_path, receptor_filename, ligname, sub_pose, pose_pdb_file  = docking_analysis_utils.create_fingerprints_analysis_folder(self,assay_folder,assay_id, results_pose_id)
         # Inform ligand under processing:
         print(f"\n Processing ligand: {ligname} \n")
     ### Compute fingerprints using MMPBSA on target folder
@@ -56,7 +56,11 @@ class DockingAnalysis:
         merged_df.to_csv(prolif_output_csv,index=False)
         
     ### Store relevant conputed files in the results database
-        docking_analysis_utils.store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,complex_pdb_file,mmpbsa_decomp_csv_output,prolif_output_csv)
+        docking_analysis_utils.store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,mmpbsa_decomp_csv_output,prolif_output_csv)
+    
+    ### Store the docked pose in the results database if required
+        if stored_docked_poses == 1:
+            docking_analysis_utils.store_docked_pose_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,pose_pdb_file)
         
     ### Delete intermediate files after all calculations if required ###
         if clean_files == 1:
@@ -72,7 +76,7 @@ class DockingAnalysis:
         
         print(f"Finished computing the fingerprint for the docked pose. - {elapsed_time} seconds")
         
-    def compute_fingerprints_for_whole_assay(self,assay_id,clean_files=1,clean_folder=1,solvent="implicit",min_steps=5000):
+    def compute_fingerprints_for_whole_assay(self,assay_id,clean_files=1,clean_folder=1,solvent="implicit",min_steps=5000,stored_docked_poses=1):
         assay_folder = self.docking_assays_path + f'/assay_{assay_id}'
         assay_results_db = f"{assay_folder}/assay_{assay_id}.db"
         
@@ -80,8 +84,7 @@ class DockingAnalysis:
         
         ## Compute the fingerprints using a for loop:
         for pose in docked_poses_list:
-            DockingAnalysis.compute_fingerprints_for_docked_pose(self,assay_id,pose,clean_files,clean_folder,solvent="implicit",min_steps=5000)
-
+            DockingAnalysis.compute_fingerprints_for_docked_pose(self,assay_id,pose,clean_files,clean_folder,solvent,min_steps,stored_docked_poses)
 
         # Sort the 'fingerprints' table based on Pose_ID
         general_functions.sort_table(assay_folder,assay_id,"fingerprints","Pose_ID")
