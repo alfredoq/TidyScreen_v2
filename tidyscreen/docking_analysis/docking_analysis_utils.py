@@ -144,7 +144,7 @@ def create_fingerprints_analysis_folder(self,assay_folder,assay_id,results_pose_
     output_path = f'{assay_folder}/fingerprints_analyses/pose_{results_pose_id}'
     Path(output_path).mkdir(parents=True, exist_ok=True)
     # Retrieve the dlg corresponding to the ligand
-    ligname, dlg_file, run_number = retrieve_dlg_file(assay_folder,assay_id,results_pose_id)
+    ligname, sub_pose, dlg_file, run_number = retrieve_dlg_file(assay_folder,assay_id,results_pose_id)
     # Extract the .pdb file by parsing the 'run_number' in the 'dlg_file'
     pose_pdb_file = parse_dlg_by_run_number(ligname,dlg_file,run_number,output_path)
     # Get the receptor filename from the dlg file
@@ -157,7 +157,7 @@ def create_fingerprints_analysis_folder(self,assay_folder,assay_id,results_pose_
     # Retrieve .mol2 and .frcmod files
     retrieve_tleap_ligand_param_files(self,table_name,output_path,ligname,pdb=1,mol2_sybyl=1,mol2_gaff2=1,frcmod=1,pdbqt=1)
     
-    return complex_pdb_file, output_path, receptor_filename, ligname
+    return complex_pdb_file, output_path, receptor_filename, ligname, sub_pose, pose_pdb_file
     
 def retrieve_dlg_file(assay_folder,assay_id,results_pose_id):
     """
@@ -166,15 +166,16 @@ def retrieve_dlg_file(assay_folder,assay_id,results_pose_id):
     results_db_file = f"{assay_folder}/assay_{assay_id}.db"
     conn = tidyscreen.connect_to_db(results_db_file)
     cursor = conn.cursor()
-    cursor.execute(f"SELECT LigName, run_number FROM Results WHERE Pose_ID = {results_pose_id}")
+    cursor.execute(f"SELECT LigName, sub_pose, run_number FROM Results WHERE Pose_ID = {results_pose_id}")
     
     try:
         
         data = cursor.fetchall()
         ligname = data[0][0]
+        sub_pose = data[0][1]
         dlg_file = assay_folder + '/dlgs/' + ligname + '.dlg'  
-        run_number = data[0][1]
-        return ligname, dlg_file, run_number
+        run_number = data[0][2]
+        return ligname, sub_pose, dlg_file, run_number
         
     except Exception as error:
         print(error)
@@ -373,7 +374,7 @@ def compute_prolif_fps_for_docked_pose(prmtop_file,crd_file,interactions_list,tl
         
         return fps_df
     
-def store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,complex_pdb_file,mmpbsa_decomp_csv_output,prolif_output_csv):
+def store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,mmpbsa_decomp_csv_output,prolif_output_csv):
     results_db = f"{assay_folder}/assay_{assay_id}.db"
     conn = tidyscreen.connect_to_db(results_db)
     cursor = conn.cursor()
@@ -383,6 +384,7 @@ def store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligna
         CREATE TABLE IF NOT EXISTS fingerprints (
         Pose_ID INTEGER PRIMARY KEY,
         LigName TEXT,
+        sub_pose TEXT,
         complex_pdb_file BLOB,
         mmpbsa_csv_file BLOB,
         prolif_csv_file BLOB
@@ -396,12 +398,40 @@ def store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligna
     
     try: 
         # Insert a single row
-        fingerprint_data = (results_pose_id,ligname,complex_tar,mmpbsa_decomp_csv_tar,prolif_csv_tar)
-        cursor.execute('INSERT INTO fingerprints (Pose_ID, LigName, complex_pdb_file, mmpbsa_csv_file, prolif_csv_file) VALUES (?, ?, ?,?,?)', fingerprint_data)
+        fingerprint_data = (results_pose_id,ligname,sub_pose,complex_tar,mmpbsa_decomp_csv_tar,prolif_csv_tar)
+        cursor.execute('INSERT INTO fingerprints (Pose_ID, LigName, sub_pose, complex_pdb_file, mmpbsa_csv_file, prolif_csv_file) VALUES (?, ?, ?, ?,?,?)', fingerprint_data)
         # Commit changes and close connection
         conn.commit()
         conn.close()
     
     except Exception as error:
         print(f"Fingerprints for pose: '{results_pose_id}' already exists. Passing...")
-        
+
+def store_docked_pose_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,pose_pdb_file):
+    results_db = f"{assay_folder}/assay_{assay_id}.db"
+    conn = tidyscreen.connect_to_db(results_db)
+    cursor = conn.cursor()
+    
+    # Create table if it doesn't exist
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS docked_poses (
+        Pose_ID INTEGER PRIMARY KEY,
+        sub_pose TEXT,
+        docked_pose BLOB
+    )
+    ''')
+    
+    # Create blobs to store
+    docked_pose_tar = general_functions.generate_tar_file(pose_pdb_file)
+    
+    # Insert a single row
+    docked_pose_data = (results_pose_id,sub_pose,docked_pose_tar)
+    
+    try:
+        cursor.execute('INSERT INTO docked_poses (Pose_ID, sub_pose, docked_pose) VALUES (?, ?, ?)', docked_pose_data)
+        # Commit changes and close connection
+        conn.commit()
+        conn.close()
+    
+    except Exception as error:
+        print(f"Docked por corresponding to: '{results_pose_id}' already exists. Passing...")

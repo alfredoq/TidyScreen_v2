@@ -99,6 +99,7 @@ def create_project_folder(path):
     project_folders_structure = {'chemspace':["raw_data","processed_data","misc"],
                                 'docking':["docking_assays","docking_registers","params",'raw_data','receptors'],
                                 'dynamics':["md_assays","md_registers","md_params"],
+                                'ml':['training_sets',"test_sets","models"],
                                 '.project_vars':["paths"]
                                 }
 
