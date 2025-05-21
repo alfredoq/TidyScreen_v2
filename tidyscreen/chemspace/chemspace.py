@@ -5,33 +5,35 @@ from tidyscreen.chemspace import cs_utils as cs_utils
 import os
 import pandas as pd
 from tidyscreen.GeneralFunctions import general_functions as general_functions
+from rdkit import RDLogger
+# Suppress RDKit warnings and errors
+RDLogger.DisableLog('rdApp.*')
 
 
 class ChemSpace:
     def __init__(self, project):
         self.project = project
         self.cs_db_path = self.project.proj_folders_path["chemspace"]["processed_data"]
+        self.cs_database_file = f"{self.cs_db_path}/chemspace.db"
 
     def check_cs_database(self):
         if not os.path.exists(f"{self.cs_db_path}/chemspace.db"):
-            print("no existe")
+            print("Database does not exists.")
 
     def input_csv(self, file):
         """
         Will read a .csv file and store it into de corresponding database
         """
-        target_table_name = file.split("/")[-1].replace(".csv","").replace(".smi","").replace("-", "_") # The last replace will avoid SQL selection actions conflicts
-        df = pd.read_csv(file,header=None,index_col=False)
-        first_element = df.iloc[0, 0]  # First row, second column (i.e. the first SMILES)
-        # Check if the first element is a valid SMILES
-        cs_utils.check_smiles(first_element) # Will stop execution if 'first_element' not a valid SMILES
-        # Make all the processing on the generated df
-        df = cs_utils.process_input_df(df)
+        # Read the csv file and check if the first element is a valid SMILES        
+        target_table_name, df, first_element = general_functions.csv_reader(file) 
+        print(df.columns)
+        # Check if the first element is a valid SMILES - Will stop the process if not
+        general_functions.check_smiles(first_element)
+        # Make all the processing on the generated df (sanitization, enumeration, inchi key calculation)
+        df = cs_utils.process_input_df(df,self.cs_database_file,file)
         # Store the final df into de database
-        cs_utils.save_df_to_db(f"{self.cs_db_path}/chemspace.db",df,target_table_name)
-        # Inform processing
-        print(f"Table '{target_table_name}' created in: '{self.cs_db_path}/chemspace.db'")
-
+        general_functions.save_df_to_db(self.cs_database_file,df,target_table_name)
+        
     def list_ligand_tables(self):
         """
         Will list all ligand tables available in the project

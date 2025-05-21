@@ -8,7 +8,7 @@ pd.set_option('future.no_silent_downcasting', True)
 from itertools import islice
 import tarfile
 import io
-
+from rdkit import Chem
 
 def renumber_pdb_file_using_crystal(crystal_file,target_file,renumbered_file,resname_field=3,resnumber_field=5):
     crystal_dict = get_pdb_sequence_dict(crystal_file,resname_field=3,resnumber_field=5)
@@ -190,4 +190,89 @@ def sort_table(assay_folder,assay_id,table,column):
     conn.commit()
     conn.close()
 
+def csv_reader(file):
+    """
+    Will read a .csv file and return a pandas dataframe
+    """
+    # Generate the target table name while also assuring compatibility SQL standards in the name
+    
+    target_table_name = file.split("/")[-1].replace(".csv","").replace(".smi","").replace("-", "_") 
+    
+    df = pd.read_csv(file,header=None,index_col=False)
+    #df = pd.read_csv(file,header=None)
+    #df = df.reset_index()
+    
+    # First row, second column (i.e. the first SMILES)
+    first_element = df.iloc[0, 0]  
+    
+    return target_table_name, df, first_element
+
+def check_table_presence(conn,table_name):
+    "Will return 1 if exists, otherwise returns 0"
+    cursor = conn.cursor()
+    cursor.execute("""SELECT name FROM sqlite_master WHERE type='table' AND name=?;""", (table_name,))
+
+    table_exists = cursor.fetchone()
+
+    if table_exists:
+        print(f"Table {table_name} exists.")
+        return 1
+    else:
+        #print(f"Table '{table_name}' DOES NOT exists.")
+        return 0
+
+def save_df_to_db(db,df,table_name):
+    conn = tidyscreen.connect_to_db(db)
+    exists = check_table_presence(conn,table_name)
+
+    if exists == 1:
+        replace_table_action = input(f"The table named '{table_name}' already exists in the database. I will replace it, are you ok with that? (y/n): ")
+
+        if replace_table_action == 'y':
+            print(f"I will overwrite table '{table_name}' as indicated.'")
+        else:
+            print(f"Quiting to safely retain table {table_name}. Stopping...")
+            sys.exit()
+
+    try:
+        df.to_sql(con=conn, name=table_name,if_exists="replace",index=None)
+        # Inform processing
+        print(f"Table '{table_name}' created in: '{db}'")
+    
+    except Exception as error:
+        print(error)
+        
+def check_smiles(smiles):
+    
+    try:     
+        mol = Chem.MolFromSmiles(smiles)
+
+        if mol is None:
+            print(f"Problem reading SMILES columns - Example {smiles} \n Stopping...")
+            sys.exit()
+        else:
+            print("SMILES column valid...")
+            
+    except:
+        print(f"Problem reading SMILES columns - Example {smiles} \n Stopping...")
+        sys.exit()
+        
+        
+def write_failed_smiles_to_db(smiles,db,file):
+    conn = tidyscreen.connect_to_db(db)
+    cursor = conn.cursor()
+    
+    # Create a table to store failed SMILES
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS failed_smiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            smiles TEXT, 
+            file TEXT
+        )
+    """)
+    # Insert the failed SMILES into the table
+    cursor.execute("INSERT INTO failed_smiles (smiles, file) VALUES (?,?)", (smiles,file))
+    conn.commit()
+    conn.close()
+           
     

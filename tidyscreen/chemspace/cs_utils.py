@@ -18,7 +18,7 @@ import subprocess
 from meeko import MoleculePreparation
 from meeko import PDBQTWriterLegacy
 from rdkit.Chem.EnumerateStereoisomers import EnumerateStereoisomers, StereoEnumerationOptions
-
+from tidyscreen.GeneralFunctions import general_functions as general_functions
 
 def check_smiles(smiles):
     
@@ -30,15 +30,15 @@ def check_smiles(smiles):
     else:
         print("SMILES column valid...")
 
-def process_input_df(df):
+def process_input_df(df,db,file):
     """
     Will rename the columns of the df constructed from a .csv input. If 'name' or 'flag' columns does not exist they will be created.
     """
+    # Rename the columns of the df to give representative naming
     rename_dict = {
-    #'index': 'id', # Renaming the index column
-    0: 'SMILES',  # Renaming 'A' to 'New_A'
-    1: 'name',  # Renaming 'B' to 'New_B'
-    2: 'flag',   # 'C' doesn't exist, it will be created
+    0: 'SMILES',  
+    1: 'name',  
+    2: 'flag',   
     }
     
     for old_col, new_col in rename_dict.items():
@@ -52,31 +52,104 @@ def process_input_df(df):
             elif new_col == "flag":
                 df[new_col] = 0
 
-    # Enumerate stereoisomers in the input df
-    df_enumerated = enumerate_stereoisomers(df)
-    df_ready = compute_inchi_key_for_whole_df(df_enumerated)
-
+    ### The processing of the SMILES will be done in the following order:
+    # Initialize pandarallel to process all steps in parallel
+    pandarallel.initialize(progress_bar=True) 
+    # Sanitization performed in parallel
+    print("Sanitizing SMILES")
+    df_sanitized = pd.DataFrame()
+    df_sanitized[["SMILES","name","flag"]] = df.parallel_apply(lambda row: sanitize_smiles_single(row,db,file), axis=1, result_type="expand")
+    # Drop rows excluded by sanitization
+    df_sanitized = df_sanitized.dropna()
+    # Enumerate stereoisomers in parallel
+    pandarallel.initialize(progress_bar=True) 
+    print("Enumerating stereoisomers")
+    df_enumerated = pd.DataFrame() # Create the enunmerated dataframe to return values from pandarallel
+    df_enumerated[["SMILES","name","flag","stereo_nbr","stereo_config"]] = df_sanitized.parallel_apply(lambda row: enumerate_stereoisomers_single(row,db,file), axis=1, result_type="expand")
+    # Computation the InChI key for the whole dataframe in parallel
+    print("Computing InChIKey")
+    pandarallel.initialize(progress_bar=True)
+    df_enumerated["inchi_key"] = df_enumerated.parallel_apply(lambda row: compute_inchi_key_refactored(row,db,file),axis=1)
     # Delete duplicated molecules based on inchi_key
-    df_ready_checked = df_ready.drop_duplicates(subset='inchi_key', keep='first')
+    df_ready_checked = df_enumerated.drop_duplicates(subset='inchi_key', keep='first')
+    # Create an 'id' column
+    df_ready_checked = df_ready_checked.reset_index().rename(columns={'index':'id'})
 
     return df_ready_checked
 
-def compute_inchi_key_for_whole_df(df):
-    pandarallel.initialize(progress_bar=False)
-    df["inchi_key"] = df["SMILES"].parallel_apply(lambda smiles: compute_inchi_key(smiles))
-    return df
+def sanitize_smiles(df,db,file):
+    # Create the output dataframe containing the sanitized SMILES
+    df_sanitized = pd.DataFrame(columns=['SMILES','name','flag'])
+    for index, row in df.iterrows():
+        try: 
+            mol = Chem.MolFromSmiles(row["SMILES"])
+            
+            if mol is None:
+                general_functions.write_failed_smiles_to_db(row["SMILES"],db,file)
+                continue  # Invalid SMILES
+            
+            # Split into fragments and keep the largest
+            frags = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
+            if not frags:
+                general_functions.write_failed_smiles_to_db(row["SMILES"],db,file)
+                continue  # No fragments found
+            
+            # The largest fragment is the one with the most atoms and that successfully passed the sanitization
+            largest = max(frags, key=lambda m: m.GetNumAtoms())
+        
+        except Exception as error:
+            general_functions.write_failed_smiles_to_db(row["SMILES"],db,file)
+            continue  # Error in processing SMILES
+        
+        # Sanitize the largest fragment
+        try:
+            Chem.SanitizeMol(largest)
+            can_smi = Chem.MolToSmiles(largest, isomericSmiles=True)
+            new_row = pd.DataFrame({'SMILES': can_smi, 'name': [row["name"]], 'flag': [row["flag"]]})
+            df_sanitized = pd.concat([df_sanitized, new_row], ignore_index=True)
+            
+        except Exception:
+            general_functions.write_failed_smiles_to_db(row["SMILES"],db,file)
+            continue  # Error in sanitization
+    
+    # return the dataframe containing the sanitized SMILES
+    return df_sanitized
 
-def compute_inchi_key(smiles):
+### Developing a function for sanitizing the SMILES from a single input
+def sanitize_smiles_single(row,db,file):
+    smiles = row["SMILES"]
+    name = row["name"]
+    flag = row["flag"]
     try:
         mol = Chem.MolFromSmiles(smiles)
-        inchi_key = Chem.MolToInchiKey(mol)
+    except Exception as error:
+        general_functions.write_failed_smiles_to_db(smiles,db,file)
+        return
         
-        return inchi_key
+    if mol is None:
+        general_functions.write_failed_smiles_to_db(smiles,db,file)
+        return
+            
+    # Split into fragments and keep the largest
+    frags = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
+    if not frags:
+        general_functions.write_failed_smiles_to_db(smiles,db,file)
+        return
+            
+    # The largest fragment is the one with the most atoms and that successfully passed the sanitization
+    largest = max(frags, key=lambda m: m.GetNumAtoms())
         
-    except:
-        pass
+    # Sanitize the largest fragment
+    try:
+        Chem.SanitizeMol(largest)
+        can_smi = Chem.MolToSmiles(largest, isomericSmiles=True)
+        return can_smi, name, flag
+    
+    except Exception:
+        general_functions.write_failed_smiles_to_db(smiles,db,file)
+        return
 
-def enumerate_stereoisomers(df):
+def enumerate_stereoisomers(df,db,file):
     options = StereoEnumerationOptions(onlyUnassigned=True, unique=True, maxIsomers=32)
     df_enumerated = pd.DataFrame(columns=['id','SMILES','name','flag',"stereo_nbr","stereo_config"])
     for index, row in df.iterrows():
@@ -98,6 +171,49 @@ def enumerate_stereoisomers(df):
     df_enumerated['id'] = df_enumerated.index
 
     return df_enumerated
+
+def enumerate_stereoisomers_single(row,db,file):
+    smiles = row["SMILES"]
+    name = row["name"]
+    flag = row["flag"]
+    # Set the options for the enumeration
+    options = StereoEnumerationOptions(onlyUnassigned=True, unique=True, maxIsomers=32)
+    mol = Chem.MolFromSmiles(smiles)
+    mol_hs = Chem.AddHs(mol)
+    isomers = list(EnumerateStereoisomers(mol_hs,options=options))
+    # Loop through the isomers and store the corresponding information
+    for isomer in isomers:
+        isomer_no_hs = Chem.RemoveHs(isomer)
+        smiles = Chem.MolToSmiles(isomer_no_hs)
+        # Get the stereo configuration of the corresponding isomer
+        stereo_config_tuple = Chem.FindMolChiralCenters(isomer,force=True,includeUnassigned=True,useLegacyImplementation=True)
+        # Wil convert the list containing stereo into string for storage in SQL database
+        stereo_config_list = [item[1] for item in stereo_config_tuple]
+        stereo_config = ','.join(stereo_config_list)
+        if stereo_config == "":
+            stereo_config = "n/a"
+        
+        return smiles, name, flag, len(isomers), stereo_config
+
+def compute_inchi_key_for_whole_df(df,db,file):
+    pandarallel.initialize(progress_bar=False)
+    df["inchi_key"] = df["SMILES"].parallel_apply(lambda smiles: compute_inchi_key(smiles,db,file))
+    return df
+
+def compute_inchi_key_refactored(row,db,file):
+    smiles = row["SMILES"]
+    mol = Chem.MolFromSmiles(smiles)
+    inchi_key = Chem.MolToInchiKey(mol)
+    return inchi_key
+    
+def compute_inchi_key(smiles,db,file):
+    try:
+        mol = Chem.MolFromSmiles(smiles)
+        inchi_key = Chem.MolToInchiKey(mol)
+        return inchi_key
+        
+    except:
+        general_functions.write_failed_smiles_to_db(smiles,db,file)
 
 def check_table_presence(conn,table_name):
     "Will return 1 if exists, otherwise returns 0"
@@ -239,6 +355,63 @@ def process_all_mols_in_table(db,table_name,charge,pdb,mol2_sybyl,mol2_gaff2,pdb
     conn = tidyscreen.connect_to_db(db)
     cursor = conn.cursor()
     
+    # # Define the list of column name to be created to store mol objects based on output selection
+    # list_mol_objects_colnames = []
+    # list_mol_objects_colnames_types = []
+
+    # if pdb == 1:
+    #     list_mol_objects_colnames.append("pdb_file")
+    #     list_mol_objects_colnames_types.append("BLOB")
+    # if mol2_sybyl == 1:
+    #     list_mol_objects_colnames.append("mol2_file_sybyl")
+    #     list_mol_objects_colnames_types.append("BLOB")
+    # if mol2_gaff2 == 1:
+    #     list_mol_objects_colnames.append("mol2_file_gaff")
+    #     list_mol_objects_colnames_types.append("BLOB")
+    #     list_mol_objects_colnames.append("frcmod_file")
+    #     list_mol_objects_colnames_types.append("BLOB")
+    # if pdbqt == 1:
+    #     list_mol_objects_colnames.append("pdbqt_file")
+    #     list_mol_objects_colnames_types.append("BLOB")
+
+    # # Finally add the charge model if mol2 are requested:
+    
+    # if mol2_sybyl == 1 or mol2_gaff2 == 1:
+    #     list_mol_objects_colnames.append("charge_model")
+    #     list_mol_objects_colnames_types.append("TEXT")
+        
+    # # Exit if no molecules is selected
+    # if len(list_mol_objects_colnames) == 0:
+    #     print("No computation of molecules was requested. Stopping...")
+    #     sys.exit()
+    
+    list_mol_objects_colnames, list_mol_objects_colnames_types = create_mols_columns_from_selection(pdb,mol2_sybyl,mol2_gaff2,pdbqt)
+        
+    check_columns_existence_in_table(conn, table_name, list_mol_objects_colnames)
+
+    # Create all the columns to store mol objects
+    try:
+        for index, column in enumerate(list_mol_objects_colnames):
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column} {list_mol_objects_colnames_types[index]};")
+    except Exception as error:
+        print(error)
+        print("Stopping")
+        sys.exit()
+
+
+    # Compute the corresponding molecules
+    sql = f"""SELECT id, SMILES, Name FROM '{table_name}';"""
+    df = pd.read_sql_query(sql,conn)
+    pandarallel.initialize(progress_bar=True) # Activate Progress Bar
+    df.parallel_apply(lambda row: append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt), axis=1)
+
+    try:
+        pass
+        #clean_temp_dir(db,table_name)
+    except:
+        pass
+
+def create_mols_columns_from_selection(pdb,mol2_sybyl,mol2_gaff2,pdbqt):
     # Define the list of column name to be created to store mol objects based on output selection
     list_mol_objects_colnames = []
     list_mol_objects_colnames_types = []
@@ -268,30 +441,9 @@ def process_all_mols_in_table(db,table_name,charge,pdb,mol2_sybyl,mol2_gaff2,pdb
     if len(list_mol_objects_colnames) == 0:
         print("No computation of molecules was requested. Stopping...")
         sys.exit()
-    
-    check_columns_existence_in_table(conn, table_name, list_mol_objects_colnames)
-
-    # Create all the columns to store mol objects
-    try:
-        for index, column in enumerate(list_mol_objects_colnames):
-            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column} {list_mol_objects_colnames_types[index]};")
-    except Exception as error:
-        print(error)
-        print("Stopping")
-        sys.exit()
 
 
-    # Compute the corresponding molecules
-    sql = f"""SELECT id, SMILES, Name FROM '{table_name}';"""
-    df = pd.read_sql_query(sql,conn)
-    pandarallel.initialize(progress_bar=True) # Activate Progress Bar
-    df.parallel_apply(lambda row: append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt), axis=1)
-
-    try:
-        pass
-        #clean_temp_dir(db,table_name)
-    except:
-        pass
+    return list_mol_objects_colnames, list_mol_objects_colnames_types
 
 def check_columns_existence_in_table(conn,table_name,columns_list):
     cursor = conn.cursor()
