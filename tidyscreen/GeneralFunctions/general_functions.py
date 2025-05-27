@@ -9,6 +9,9 @@ from itertools import islice
 import tarfile
 import io
 from rdkit import Chem
+import concurrent.futures
+import moldf
+import copy
 
 def renumber_pdb_file_using_crystal(crystal_file,target_file,renumbered_file,resname_field=3,resnumber_field=5):
     crystal_dict = get_pdb_sequence_dict(crystal_file,resname_field=3,resnumber_field=5)
@@ -257,8 +260,7 @@ def check_smiles(smiles):
         print(f"Problem reading SMILES columns - Example {smiles} \n Stopping...")
         sys.exit()
         
-        
-def write_failed_smiles_to_db(smiles,db,file):
+def write_failed_smiles_to_db(smiles,db,file,cause):
     conn = tidyscreen.connect_to_db(db)
     cursor = conn.cursor()
     
@@ -267,12 +269,71 @@ def write_failed_smiles_to_db(smiles,db,file):
         CREATE TABLE IF NOT EXISTS failed_smiles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             smiles TEXT, 
-            file TEXT
+            source TEXT,
+            cause TEXT
         )
     """)
     # Insert the failed SMILES into the table
-    cursor.execute("INSERT INTO failed_smiles (smiles, file) VALUES (?,?)", (smiles,file))
+    cursor.execute("INSERT INTO failed_smiles (smiles, source, cause) VALUES (?,?,?)", (smiles,file,cause))
     conn.commit()
     conn.close()
-           
+
+def delete_nulls_table(db,table_name,column_name):
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    cursor.execute(f"DELETE FROM {table_name} WHERE {column_name} IS NULL")
+    conn.commit()
+    conn.close()
+
+def timeout_function(function, args=(),kwargs=None, timeout=60,on_timeout_args=None):
+    if kwargs is None:
+        kwargs = {}
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+    #with concurrent.futures.ProcessPoolExecutor() as executor:
+        future = executor.submit(function, *args, **kwargs)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            write_failed_smiles_to_db(on_timeout_args[0],on_timeout_args[1],on_timeout_args[2],on_timeout_args[3])
+            return None
+        
+def sybyl_to_gaff_mol2(input_mol2, output_mol2, sybyl_to_gaff_dict):
+    with open(input_mol2, 'r') as infile, open(output_mol2, 'w') as outfile:
+        atom_section = False
+        for line in infile:
+            if line.startswith("@<TRIPOS>ATOM"):
+                atom_section = True
+                outfile.write(line)
+                continue
+            elif line.startswith("@<TRIPOS>BOND"):
+                atom_section = False
+                outfile.write(line)
+                continue
+
+            if atom_section and line.strip():
+                parts = line.split()
+                if len(parts) > 5:
+                    sybyl_type = parts[5]
+                    gaff_type = sybyl_to_gaff_dict.get(sybyl_type, sybyl_type)
+                    parts[5] = gaff_type
+                    line = "{:<7} {:<4} {:>10} {:>10} {:>10} {:<6} {:>5} {:<4}\n".format(
+                        parts[0], parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7]
+                    ) if len(parts) >= 8 else " ".join(parts) + "\n"
+            outfile.write(line)
+            
+def sybyl_to_gaff_mol2_moldf(sybyl_file,gaff_file,atoms_dict):
     
+    # Read the mol2 file and make a copy for the gaff version
+    mol_sybyl = moldf.read_mol2(sybyl_file)
+    mol_gaff = copy.deepcopy(mol_sybyl)
+    
+    # Update atom types
+    for idx, row in mol_sybyl['ATOM'].iterrows():
+        sybyl_atom = row['atom_type']
+        gaff_type = atoms_dict.get(sybyl_atom, sybyl_atom)
+        mol_gaff['ATOM'].at[idx,'atom_type'] = gaff_type
+        
+    # Write the modified mol2 file
+    moldf.write_mol2(mol_gaff,gaff_file)
+
+    return gaff_file

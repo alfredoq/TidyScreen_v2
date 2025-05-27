@@ -19,6 +19,8 @@ from meeko import MoleculePreparation
 from meeko import PDBQTWriterLegacy
 from rdkit.Chem.EnumerateStereoisomers import EnumerateStereoisomers, StereoEnumerationOptions
 from tidyscreen.GeneralFunctions import general_functions as general_functions
+import time
+import pickle
 
 def check_smiles(smiles):
     
@@ -54,7 +56,7 @@ def process_input_df(df,db,file):
 
     ### The processing of the SMILES will be done in the following order:
     # Initialize pandarallel to process all steps in parallel
-    pandarallel.initialize(progress_bar=True) 
+    pandarallel.initialize(progress_bar=False) 
     # Sanitization performed in parallel
     print("Sanitizing SMILES")
     df_sanitized = pd.DataFrame()
@@ -62,13 +64,13 @@ def process_input_df(df,db,file):
     # Drop rows excluded by sanitization
     df_sanitized = df_sanitized.dropna()
     # Enumerate stereoisomers in parallel
-    pandarallel.initialize(progress_bar=True) 
+    pandarallel.initialize(progress_bar=False) 
     print("Enumerating stereoisomers")
     df_enumerated = pd.DataFrame() # Create the enunmerated dataframe to return values from pandarallel
     df_enumerated[["SMILES","name","flag","stereo_nbr","stereo_config"]] = df_sanitized.parallel_apply(lambda row: enumerate_stereoisomers_single(row,db,file), axis=1, result_type="expand")
     # Computation the InChI key for the whole dataframe in parallel
     print("Computing InChIKey")
-    pandarallel.initialize(progress_bar=True)
+    pandarallel.initialize(progress_bar=False)
     df_enumerated["inchi_key"] = df_enumerated.parallel_apply(lambda row: compute_inchi_key_refactored(row,db,file),axis=1)
     # Delete duplicated molecules based on inchi_key
     df_ready_checked = df_enumerated.drop_duplicates(subset='inchi_key', keep='first')
@@ -85,21 +87,24 @@ def sanitize_smiles(df,db,file):
             mol = Chem.MolFromSmiles(row["SMILES"])
             
             if mol is None:
-                general_functions.write_failed_smiles_to_db(row["SMILES"],db,file)
-                continue  # Invalid SMILES
+                fail_message = "Failed at .csv input stage - mol read"
+                general_functions.write_failed_smiles_to_db(row["SMILES"],db,file,fail_message)
+                #continue  # Invalid SMILES
             
             # Split into fragments and keep the largest
             frags = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
             if not frags:
-                general_functions.write_failed_smiles_to_db(row["SMILES"],db,file)
-                continue  # No fragments found
+                fail_message = "Failed at .csv input stage - fragments generation"
+                general_functions.write_failed_smiles_to_db(row["SMILES"],db,file,fail_message)
+                #continue  # No fragments found
             
             # The largest fragment is the one with the most atoms and that successfully passed the sanitization
             largest = max(frags, key=lambda m: m.GetNumAtoms())
         
         except Exception as error:
-            general_functions.write_failed_smiles_to_db(row["SMILES"],db,file)
-            continue  # Error in processing SMILES
+            fail_message = "Failed at .csv input stage - general error"
+            general_functions.write_failed_smiles_to_db(row["SMILES"],db,file,fail_message)
+            #continue  # Error in processing SMILES
         
         # Sanitize the largest fragment
         try:
@@ -109,13 +114,13 @@ def sanitize_smiles(df,db,file):
             df_sanitized = pd.concat([df_sanitized, new_row], ignore_index=True)
             
         except Exception:
-            general_functions.write_failed_smiles_to_db(row["SMILES"],db,file)
+            fail_message = "Failed at .csv input stage - sanitization error"
+            general_functions.write_failed_smiles_to_db(row["SMILES"],db,file,fail_message)
             continue  # Error in sanitization
     
     # return the dataframe containing the sanitized SMILES
     return df_sanitized
 
-### Developing a function for sanitizing the SMILES from a single input
 def sanitize_smiles_single(row,db,file):
     smiles = row["SMILES"]
     name = row["name"]
@@ -123,11 +128,13 @@ def sanitize_smiles_single(row,db,file):
     try:
         mol = Chem.MolFromSmiles(smiles)
     except Exception as error:
-        general_functions.write_failed_smiles_to_db(smiles,db,file)
+        fail_message = "Failed at .csv input stage - sanitization error"
+        general_functions.write_failed_smiles_to_db(smiles,db,file,fail_message)
         return
         
     if mol is None:
-        general_functions.write_failed_smiles_to_db(smiles,db,file)
+        fail_message = "Failed at .csv input stage - mol generation at sanitization error"
+        general_functions.write_failed_smiles_to_db(smiles,db,file,fail_message)
         return
             
     # Split into fragments and keep the largest
@@ -213,7 +220,8 @@ def compute_inchi_key(smiles,db,file):
         return inchi_key
         
     except:
-        general_functions.write_failed_smiles_to_db(smiles,db,file)
+        fail_message = "Failed at .csv input stage - InChI_Key computation error"
+        general_functions.write_failed_smiles_to_db(smiles,db,file,fail_message)
 
 def check_table_presence(conn,table_name):
     "Will return 1 if exists, otherwise returns 0"
@@ -351,41 +359,11 @@ def check_folder_presence(folder,create=0):
             # Create the corresponding folder
             Path(f"{folder}").mkdir(parents=True, exist_ok=False)
 
-def process_all_mols_in_table(db,table_name,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt):
+def process_all_mols_in_table(db,table_name,charge,pdb,mol2,pdbqt,temp_dir):
     conn = tidyscreen.connect_to_db(db)
     cursor = conn.cursor()
     
-    # # Define the list of column name to be created to store mol objects based on output selection
-    # list_mol_objects_colnames = []
-    # list_mol_objects_colnames_types = []
-
-    # if pdb == 1:
-    #     list_mol_objects_colnames.append("pdb_file")
-    #     list_mol_objects_colnames_types.append("BLOB")
-    # if mol2_sybyl == 1:
-    #     list_mol_objects_colnames.append("mol2_file_sybyl")
-    #     list_mol_objects_colnames_types.append("BLOB")
-    # if mol2_gaff2 == 1:
-    #     list_mol_objects_colnames.append("mol2_file_gaff")
-    #     list_mol_objects_colnames_types.append("BLOB")
-    #     list_mol_objects_colnames.append("frcmod_file")
-    #     list_mol_objects_colnames_types.append("BLOB")
-    # if pdbqt == 1:
-    #     list_mol_objects_colnames.append("pdbqt_file")
-    #     list_mol_objects_colnames_types.append("BLOB")
-
-    # # Finally add the charge model if mol2 are requested:
-    
-    # if mol2_sybyl == 1 or mol2_gaff2 == 1:
-    #     list_mol_objects_colnames.append("charge_model")
-    #     list_mol_objects_colnames_types.append("TEXT")
-        
-    # # Exit if no molecules is selected
-    # if len(list_mol_objects_colnames) == 0:
-    #     print("No computation of molecules was requested. Stopping...")
-    #     sys.exit()
-    
-    list_mol_objects_colnames, list_mol_objects_colnames_types = create_mols_columns_from_selection(pdb,mol2_sybyl,mol2_gaff2,pdbqt)
+    list_mol_objects_colnames, list_mol_objects_colnames_types = create_mols_columns_from_selection(pdb,mol2,pdbqt)
         
     check_columns_existence_in_table(conn, table_name, list_mol_objects_colnames)
 
@@ -403,7 +381,7 @@ def process_all_mols_in_table(db,table_name,charge,pdb,mol2_sybyl,mol2_gaff2,pdb
     sql = f"""SELECT id, SMILES, Name FROM '{table_name}';"""
     df = pd.read_sql_query(sql,conn)
     pandarallel.initialize(progress_bar=True) # Activate Progress Bar
-    df.parallel_apply(lambda row: append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt), axis=1)
+    df.parallel_apply(lambda row: append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt,temp_dir), axis=1)
 
     try:
         pass
@@ -411,7 +389,7 @@ def process_all_mols_in_table(db,table_name,charge,pdb,mol2_sybyl,mol2_gaff2,pdb
     except:
         pass
 
-def create_mols_columns_from_selection(pdb,mol2_sybyl,mol2_gaff2,pdbqt):
+def create_mols_columns_from_selection(pdb,mol2,pdbqt):
     # Define the list of column name to be created to store mol objects based on output selection
     list_mol_objects_colnames = []
     list_mol_objects_colnames_types = []
@@ -419,10 +397,9 @@ def create_mols_columns_from_selection(pdb,mol2_sybyl,mol2_gaff2,pdbqt):
     if pdb == 1:
         list_mol_objects_colnames.append("pdb_file")
         list_mol_objects_colnames_types.append("BLOB")
-    if mol2_sybyl == 1:
+    if mol2 == 1:
         list_mol_objects_colnames.append("mol2_file_sybyl")
         list_mol_objects_colnames_types.append("BLOB")
-    if mol2_gaff2 == 1:
         list_mol_objects_colnames.append("mol2_file_gaff")
         list_mol_objects_colnames_types.append("BLOB")
         list_mol_objects_colnames.append("frcmod_file")
@@ -433,7 +410,7 @@ def create_mols_columns_from_selection(pdb,mol2_sybyl,mol2_gaff2,pdbqt):
 
     # Finally add the charge model if mol2 are requested:
     
-    if mol2_sybyl == 1 or mol2_gaff2 == 1:
+    if mol2 == 1:
         list_mol_objects_colnames.append("charge_model")
         list_mol_objects_colnames_types.append("TEXT")
         
@@ -459,13 +436,13 @@ def check_columns_existence_in_table(conn,table_name,columns_list):
 
         sys.exit()
 
-def append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt):
+def append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt,temp_dir):
     
     action = 0 
     
     if pdb == 1:
         # Prepare and store the corresponding .pdb file
-        pdb_file, tar_pdb_file, net_charge = pdb_from_smiles(row["SMILES"])
+        pdb_file, tar_pdb_file, net_charge = pdb_from_smiles(row["SMILES"],temp_dir)
         store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
         action = 1
     
@@ -500,14 +477,13 @@ def append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sy
         print("No computation of molecules was requested. Stopping...")
         sys.exit()
 
-def pdb_from_smiles(smiles):
-    
+def pdb_from_smiles(smiles,dir):
     try:
         mol = Chem.MolFromSmiles(smiles)
         mol_hs = Chem.AddHs(mol)
         confs, mol_hs, ps = generate_ligand_conformers(mol_hs)
         selected_mol = get_conformer_rank(confs, mol_hs, ps)
-        pdb_file, inchi_key = save_ligand_pdb_file(selected_mol)
+        pdb_file, inchi_key = save_ligand_pdb_file(selected_mol,dir)
         # Compute the net charge of the molecule for potential use in antechamber
         net_charge = compute_molecule_net_charge(mol)
             
@@ -515,6 +491,34 @@ def pdb_from_smiles(smiles):
         tar_pdb_file = generate_tar_file(pdb_file)
         
         return pdb_file, tar_pdb_file, net_charge
+    
+    except Exception as error:
+        print(f"Problem with SMILES: \n {smiles}")
+
+def pdb_from_smiles_safetime(smiles,dir):
+    start = time.time()
+    try:
+        while True:
+            print("COMPUTANDO")
+            mol = Chem.MolFromSmiles(smiles)
+            mol_hs = Chem.AddHs(mol)
+            confs, mol_hs, ps = generate_ligand_conformers(mol_hs)
+            print("SALI")
+            selected_mol = get_conformer_rank(confs, mol_hs, ps)
+            pdb_file, inchi_key = save_ligand_pdb_file(selected_mol,dir)
+            # Compute the net charge of the molecule for potential use in antechamber
+            net_charge = compute_molecule_net_charge(mol)
+                
+            # Compress the pdb_file
+            tar_pdb_file = generate_tar_file(pdb_file)
+            
+            if time.time() - start > 10:
+                print("Timeout reached for row:", smiles)
+                return None
+            
+            return pdb_file, tar_pdb_file, net_charge
+
+            
     
     except Exception as error:
         print(f"Problem with SMILES: \n {smiles}")
@@ -535,6 +539,56 @@ def mol2_from_pdb(pdb_file,net_charge,charge,at):
     subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
         
     # Compress the output file for storage
+    output_tar_file = generate_tar_file(output_file)
+        
+    return output_file, output_tar_file
+
+def sybyl_mol2_from_pdb(inchi_key,charge,temp_dir):
+    
+    pdb_file = f"{temp_dir}/{inchi_key}.pdb"
+    output_file = f"{temp_dir}/{inchi_key}_sybyl.mol2"
+    # Since Antechamber creates temporary files for the calculation, and they should not overwrite each other when executing in parallel, create a temporary folder following the molecule InChIKey, 'cd' into it and run the computation.
+    antechamber_temp_folder = f"{temp_dir}/{inchi_key}"
+    os.makedirs(antechamber_temp_folder,exist_ok=True) # Create the corresponding temp directory
+    # Compute the ligand net charge
+    net_charge = compute_charge_from_pdb(pdb_file)
+    # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
+    antechamber_path = shutil.which('antechamber')
+    try: 
+        antechamber_command = f'cd {antechamber_temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge} -nc {net_charge} -at sybyl -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
+        subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
+
+        # Once computation finished, delete the ligand temporary folder
+        shutil.rmtree(antechamber_temp_folder)        
+            
+    except Exception as error:
+        print(error)
+    # # Compress the output file for storage
+    output_tar_file = generate_tar_file(output_file)
+        
+    return output_file, output_tar_file
+
+def gaff_mol2_from_pdb(inchi_key,charge,temp_dir):
+    
+    pdb_file = f"{temp_dir}/{inchi_key}.pdb"
+    output_file = f"{temp_dir}/{inchi_key}_gaff.mol2"
+    # Since Antechamber creates temporary files for the calculation, and they should not overwrite each other when executing in parallel, create a temporary folder following the molecule InChIKey, 'cd' into it and run the computation.
+    antechamber_temp_folder = f"{temp_dir}/{inchi_key}"
+    os.makedirs(antechamber_temp_folder,exist_ok=True) # Create the corresponding temp directory
+    # Compute the ligand net charge
+    net_charge = compute_charge_from_pdb(pdb_file)
+    # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
+    antechamber_path = shutil.which('antechamber')
+    try: 
+        antechamber_command = f'cd {antechamber_temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge} -nc {net_charge} -at gaff -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
+        subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
+
+        # Once computation finished, delete the ligand temporary folder
+        shutil.rmtree(antechamber_temp_folder)        
+            
+    except Exception as error:
+        print(error)
+    # # Compress the output file for storage
     output_tar_file = generate_tar_file(output_file)
         
     return output_file, output_tar_file
@@ -729,8 +783,6 @@ def generate_ligand_conformers(mol,nbr_confs=50,mmff='MMFF94',maxIters=10, confo
     props.pruneRmsThresh = 0.25
     props.useRandomCoords = True
     props.numThreads = 1
-    
-    # Create the object containing the conformers
     confs = AllChem.EmbedMultipleConfs(mol,nbr_confs,props)
     ps = AllChem.MMFFGetMoleculeProperties(mol)
     #AllChem.MMFFOptimizeMoleculeConfs(mol, mmffVariant=mmff, maxIters=maxIters)
@@ -760,11 +812,9 @@ def get_conformer_rank(confs, mol_hs, ps,rank=0):
 
     return selected_mol
 
-def save_ligand_pdb_file(selected_mol):
+def save_ligand_pdb_file(selected_mol,dir="/tmp"):
     inchi_key = Chem.MolToInchiKey(selected_mol)
-    temp_folder = f'/tmp/{inchi_key}'
-    os.makedirs(temp_folder, exist_ok=True)
-    pdb_file = f'{temp_folder}/{inchi_key}.pdb'
+    pdb_file = f'{dir}/{inchi_key}.pdb'
     
     Chem.MolToPDBFile(selected_mol,pdb_file)
 
@@ -878,3 +928,105 @@ def clean_temp_dir(db,table_name):
     #             os.remove(file)
     #         except Exception as e:
     #             pass
+    
+def create_mols_columns(conn, table_name,list_mol_objects_colnames,list_mol_objects_colnames_types):
+    # Create all the columns to store mol objects
+    try:
+        cursor = conn.cursor()
+        for index, column in enumerate(list_mol_objects_colnames):
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column} {list_mol_objects_colnames_types[index]};")
+    except Exception as error:
+        print(error)
+        print("Stopping")
+        sys.exit()
+    pass
+
+def compute_and_store_pdb(row,db,table_name,temp_dir):
+    # Prepare and store the corresponding .pdb file
+    try:
+        pdb_file, tar_pdb_file, net_charge = general_functions.timeout_function(pdb_from_smiles,(row["SMILES"],temp_dir),timeout=60,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdb_from_smiles' computation"])
+        store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
+    except Exception as error:
+        fail_message = f"Failed at .pdb molecule computation step - Mol id: {row['id']}"
+        general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)
+
+def compute_and_store_pdb_2(row,db,table_name,temp_dir):
+    # Prepare and store the corresponding .pdb file
+    try:
+        pdb_file, tar_pdb_file, net_charge = pdb_from_smiles(row["SMILES"],temp_dir)
+        store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
+    except Exception as error:
+        fail_message = f"Failed at .pdb molecule computation step - Mol id: {row['id']}"
+        general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)
+
+def compute_and_store_pdb_safetime(row,db,table_name,temp_dir):
+    start = time.time()
+    try:
+        while True:
+            #pdb_file, tar_pdb_file, net_charge = pdb_from_smiles(row["SMILES"],temp_dir)
+            pdb_file, tar_pdb_file, net_charge = pdb_from_smiles_safetime(row["SMILES"],temp_dir)
+            store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
+            if time.time() - start > 1:
+                print("Timed out by internal function")
+    
+    except Exception as error:
+        fail_message = f"Failed at .pdb molecule computation step - Mol id: {row['id']}"
+        general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)
+
+def timeout_compute_and_store_pdb(row,db,table_name,temp_dir):
+    return general_functions.timeout_function(compute_and_store_pdb_2,args=(row,db,table_name,temp_dir),timeout=10,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdb_from_smiles' computation"])
+
+def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
+    try: 
+        if charge != "bcc-ml":
+            # Compute and store in the db the sybyl type mol2
+            mol2_output_file, output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],charge,temp_dir)
+            store_file_as_blob(db,table_name,'mol2_file_sybyl',output_tar_file,row)
+            # Rename the mol2 file from sybyl to gaff using a precomputed dictionary
+            mol2_gaff_file, output_tar_file = rename_sybyl_to_gaff_mol2(row,db,table_name,temp_dir,atom_types_dict)
+            # Store the renamed mol2 file as gaff type
+            store_file_as_blob(db,table_name,'mol2_file_gaff',output_tar_file,row)
+            # Compute the frcmod file
+            output_tar_frcmod = compute_frcmod_file(mol2_gaff_file,at="gaff")
+            # Store the frcmod file
+            store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
+            # Store the charge model used
+            store_string_in_column(db,table_name,"charge_model",charge,row)
+            
+    except Exception as error:
+        fail_message = f"Failed at .mol2 sybyl atom type computation step - Mol id: {row['id']}"
+        general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)
+
+def compute_charge_from_pdb(pdb_file):
+    mol = Chem.MolFromPDBFile(pdb_file, removeHs=False) 
+    
+    molecule_charge = 0
+    for atom in mol.GetAtoms():
+        charge = atom.GetFormalCharge()
+        molecule_charge = molecule_charge + charge
+
+    return molecule_charge
+
+def rename_sybyl_to_gaff_mol2(row,db,table_name,temp_dir,atom_types_dict):
+    sybyl_file = f"{temp_dir}/{row['inchi_key']}_sybyl.mol2"
+    gaff_file = f"{temp_dir}/{row['inchi_key']}_gaff.mol2"
+    
+    with open(atom_types_dict, 'rb') as f:
+        atoms_dict = pickle.load(f)
+    
+    #general_functions.sybyl_to_gaff_mol2(sybyl_file,gaff_file,atom_dict)
+    mol2_gaff_file = general_functions.sybyl_to_gaff_mol2_moldf(sybyl_file,gaff_file,atoms_dict)
+    
+    output_tar_file = generate_tar_file(mol2_gaff_file)
+    
+    return mol2_gaff_file, output_tar_file
+    
+def compute_and_store_pdbqt(row,db,table_name,temp_dir):
+    try:
+        # Prepare and store the corresponding .pdbqt file
+        tar_pdbqt_file = pdbqt_from_mol2(f"{temp_dir}/{row['inchi_key']}_sybyl.mol2")
+        store_file_as_blob(db,table_name,'pdbqt_file',tar_pdbqt_file,row)
+    except Exception as error:
+        fail_message = f"Failed at .pdbqt molecule computation step - Mol id: {row['id']}"
+        general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)    
+    
