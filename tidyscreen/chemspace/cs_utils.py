@@ -21,6 +21,8 @@ from rdkit.Chem.EnumerateStereoisomers import EnumerateStereoisomers, StereoEnum
 from tidyscreen.GeneralFunctions import general_functions as general_functions
 import time
 import pickle
+import multiprocessing
+from espaloma_charge import charge
 
 def check_smiles(smiles):
     
@@ -568,30 +570,30 @@ def sybyl_mol2_from_pdb(inchi_key,charge,temp_dir):
         
     return output_file, output_tar_file
 
-def gaff_mol2_from_pdb(inchi_key,charge,temp_dir):
+# def gaff_mol2_from_pdb(inchi_key,charge,temp_dir):
     
-    pdb_file = f"{temp_dir}/{inchi_key}.pdb"
-    output_file = f"{temp_dir}/{inchi_key}_gaff.mol2"
-    # Since Antechamber creates temporary files for the calculation, and they should not overwrite each other when executing in parallel, create a temporary folder following the molecule InChIKey, 'cd' into it and run the computation.
-    antechamber_temp_folder = f"{temp_dir}/{inchi_key}"
-    os.makedirs(antechamber_temp_folder,exist_ok=True) # Create the corresponding temp directory
-    # Compute the ligand net charge
-    net_charge = compute_charge_from_pdb(pdb_file)
-    # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
-    antechamber_path = shutil.which('antechamber')
-    try: 
-        antechamber_command = f'cd {antechamber_temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge} -nc {net_charge} -at gaff -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
-        subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
+#     pdb_file = f"{temp_dir}/{inchi_key}.pdb"
+#     output_file = f"{temp_dir}/{inchi_key}_gaff.mol2"
+#     # Since Antechamber creates temporary files for the calculation, and they should not overwrite each other when executing in parallel, create a temporary folder following the molecule InChIKey, 'cd' into it and run the computation.
+#     antechamber_temp_folder = f"{temp_dir}/{inchi_key}"
+#     os.makedirs(antechamber_temp_folder,exist_ok=True) # Create the corresponding temp directory
+#     # Compute the ligand net charge
+#     net_charge = compute_charge_from_pdb(pdb_file)
+#     # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
+#     antechamber_path = shutil.which('antechamber')
+#     try: 
+#         antechamber_command = f'cd {antechamber_temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge} -nc {net_charge} -at gaff -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
+#         subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
 
-        # Once computation finished, delete the ligand temporary folder
-        shutil.rmtree(antechamber_temp_folder)        
+#         # Once computation finished, delete the ligand temporary folder
+#         shutil.rmtree(antechamber_temp_folder)        
             
-    except Exception as error:
-        print(error)
-    # # Compress the output file for storage
-    output_tar_file = generate_tar_file(output_file)
+#     except Exception as error:
+#         print(error)
+#     # # Compress the output file for storage
+#     output_tar_file = generate_tar_file(output_file)
         
-    return output_file, output_tar_file
+#     return output_file, output_tar_file
 
 def compute_frcmod_file(mol2_file,at):
     # Get the prefixes for the file
@@ -944,10 +946,11 @@ def create_mols_columns(conn, table_name,list_mol_objects_colnames,list_mol_obje
 def compute_and_store_pdb(row,db,table_name,temp_dir):
     # Prepare and store the corresponding .pdb file
     try:
-        pdb_file, tar_pdb_file, net_charge = general_functions.timeout_function(pdb_from_smiles,(row["SMILES"],temp_dir),timeout=60,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdb_from_smiles' computation"])
+        pdb_file, tar_pdb_file, net_charge = general_functions.timeout_function(pdb_from_smiles,(row["SMILES"],temp_dir),timeout=10,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdb_from_smiles' computation"])
         store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
     except Exception as error:
-        fail_message = f"Failed at .pdb molecule computation step - Mol id: {row['id']}"
+        print("TIMEOUT!")
+        fail_message = f"Failed at .pdb molecule computation step - Mol id: {row['id']} - deleted from {table_name}"
         general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)
 
 def compute_and_store_pdb_2(row,db,table_name,temp_dir):
@@ -981,6 +984,7 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
         if charge != "bcc-ml":
             # Compute and store in the db the sybyl type mol2
             mol2_output_file, output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],charge,temp_dir)
+            # Store the Sybyl like file
             store_file_as_blob(db,table_name,'mol2_file_sybyl',output_tar_file,row)
             # Rename the mol2 file from sybyl to gaff using a precomputed dictionary
             mol2_gaff_file, output_tar_file = rename_sybyl_to_gaff_mol2(row,db,table_name,temp_dir,atom_types_dict)
@@ -992,7 +996,32 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
             store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
             # Store the charge model used
             store_string_in_column(db,table_name,"charge_model",charge,row)
+        
+        elif charge == "bcc-ml":
+            charge_array = compute_bbc_ml_array(row["SMILES"],row["inchi_key"],temp_dir)
+            mol2_output_file, output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],"gas",temp_dir) # Compute the charge using a fake 'gas' model to be replaced
+            # Replace the charges on the .mol2 files using the precomputed bbc-ml charges
+            replaced_mol2_file = general_functions.replace_charge_on_mol2_file(mol2_output_file,charge_array)
+            new_tar_file = generate_tar_file(replaced_mol2_file)
+            # Store the Sybyl like file
+            store_file_as_blob(db,table_name,'mol2_file_sybyl',new_tar_file,row)
+            # Rename the mol2 file from sybyl to gaff using a precomputed dictionary
+            mol2_gaff_file, output_tar_file = rename_sybyl_to_gaff_mol2(row,db,table_name,temp_dir,atom_types_dict)
+            # Store the renamed mol2 file as gaff type
+            store_file_as_blob(db,table_name,'mol2_file_gaff',output_tar_file,row)
+            # Compute the frcmod file
+            output_tar_frcmod = compute_frcmod_file(mol2_gaff_file,at="gaff")
+            # Store the frcmod file
+            store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
+            # Store the charge model used
+            store_string_in_column(db,table_name,"charge_model",charge,row)
             
+            
+        else:
+            print(f"Charge system: '{charge}' unknown. Stopping...")
+            sys.exit()
+            
+          
     except Exception as error:
         fail_message = f"Failed at .mol2 sybyl atom type computation step - Mol id: {row['id']}"
         general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)
@@ -1004,6 +1033,7 @@ def compute_charge_from_pdb(pdb_file):
     for atom in mol.GetAtoms():
         charge = atom.GetFormalCharge()
         molecule_charge = molecule_charge + charge
+
 
     return molecule_charge
 
@@ -1030,3 +1060,60 @@ def compute_and_store_pdbqt(row,db,table_name,temp_dir):
         fail_message = f"Failed at .pdbqt molecule computation step - Mol id: {row['id']}"
         general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)    
     
+def test_dummy_conformer(smiles,nbr_confs,maxIters):
+    mol = Chem.MolFromSmiles(smiles)
+    mol_hs = Chem.AddHs(mol)
+    props = AllChem.ETKDG()
+    props.pruneRmsThresh = 0.25
+    props.useRandomCoords = True
+    props.numThreads = 1
+    confs = AllChem.EmbedMultipleConfs(mol_hs,nbr_confs,props)
+    
+def test_dummy_conformer_on_table(db,table_name):
+    conn =  sqlite3.connect(db)
+    df = pd.read_sql_query(f"SELECT SMILES FROM {table_name}", conn)
+    conn.close()
+    
+    for idx, row in df.iterrows():
+        try:
+            run_with_hard_timeout(test_dummy_conformer(row["SMILES"],2,5))
+        except Exception as error:
+            fail_message = "Failed at dummy conformer generation"
+            print(fail_message)
+            general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)
+
+def run_with_hard_timeout(func, args=(), kwargs=None, timeout=5):
+    if kwargs is None:
+        kwargs = {}
+    p = multiprocessing.Process(target=func, args=args, kwargs=kwargs)
+    p.start()
+    p.join(timeout)
+    
+    if p.is_alive():
+        print("Function timed out and will be killed.")
+        p.terminate()
+        p.join()
+        return None
+    
+    print("termine")
+    #return True  # or return a result via a multiprocessing.Queue
+    
+def compute_bbc_ml_array(smiles,inchi_key,temp_dir):
+    
+    molecule = Chem.MolFromSmiles(smiles)
+    molecule_hs = Chem.AddHs(molecule)
+    # Compute the array of bcc-ml charges using the ESPaloma package
+    charge_array = charge(molecule_hs)
+    
+    try: 
+        ## Write the atom, charge pairing to to a file
+        with open(f"{temp_dir}/{inchi_key}_charges.txt",'w') as charge_outfile:
+            counter = 0 
+            for atom in molecule_hs.GetAtoms():
+                record = f"{atom.GetSymbol()} : {atom.GetIdx()} {charge_array[counter]} \n"
+                charge_outfile.write(record)
+                counter += 1
+    except Exception as error:
+        print(error)
+    
+    return charge_array

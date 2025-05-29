@@ -337,3 +337,28 @@ def sybyl_to_gaff_mol2_moldf(sybyl_file,gaff_file,atoms_dict):
     moldf.write_mol2(mol_gaff,gaff_file)
 
     return gaff_file
+
+def delete_smiles_row_from_table(smiles,db,table_name):
+    conn = sqlite3.connect('your_database.db')
+    cursor = conn.cursor()
+
+    # Delete rows where column_name matches a specific value
+    cursor.execute(f"DELETE FROM {table_name} WHERE SMILES = ?", (smiles,))
+
+    conn.commit()
+    conn.close()
+
+def replace_charge_on_mol2_file(mol2_file,charge_array):
+    # Read the .mol2 file
+    mol = moldf.read_mol2(mol2_file)
+    try:
+        for idx, row in mol['ATOM'].iterrows():
+            mol['ATOM'].loc[idx,['charge']] = charge_array[idx]
+            
+        # Replace the original file with the new one containing replaced charges
+        moldf.write_mol2(mol, mol2_file)
+    
+        return mol2_file
+    
+    except Exception as error:
+        print(Exception)
