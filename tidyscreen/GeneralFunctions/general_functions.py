@@ -8,7 +8,10 @@ pd.set_option('future.no_silent_downcasting', True)
 from itertools import islice
 import tarfile
 import io
-
+from rdkit import Chem
+import concurrent.futures
+import moldf
+import copy
 
 def renumber_pdb_file_using_crystal(crystal_file,target_file,renumbered_file,resname_field=3,resnumber_field=5):
     crystal_dict = get_pdb_sequence_dict(crystal_file,resname_field=3,resnumber_field=5)
@@ -190,4 +193,172 @@ def sort_table(assay_folder,assay_id,table,column):
     conn.commit()
     conn.close()
 
+def csv_reader(file):
+    """
+    Will read a .csv file and return a pandas dataframe
+    """
+    # Generate the target table name while also assuring compatibility SQL standards in the name
     
+    target_table_name = file.split("/")[-1].replace(".csv","").replace(".smi","").replace("-", "_") 
+    
+    df = pd.read_csv(file,header=None,index_col=False)
+    #df = pd.read_csv(file,header=None)
+    #df = df.reset_index()
+    
+    # First row, second column (i.e. the first SMILES)
+    first_element = df.iloc[0, 0]  
+    
+    return target_table_name, df, first_element
+
+def check_table_presence(conn,table_name):
+    "Will return 1 if exists, otherwise returns 0"
+    cursor = conn.cursor()
+    cursor.execute("""SELECT name FROM sqlite_master WHERE type='table' AND name=?;""", (table_name,))
+
+    table_exists = cursor.fetchone()
+
+    if table_exists:
+        print(f"Table {table_name} exists.")
+        return 1
+    else:
+        #print(f"Table '{table_name}' DOES NOT exists.")
+        return 0
+
+def save_df_to_db(db,df,table_name):
+    conn = tidyscreen.connect_to_db(db)
+    exists = check_table_presence(conn,table_name)
+
+    if exists == 1:
+        replace_table_action = input(f"The table named '{table_name}' already exists in the database. I will replace it, are you ok with that? (y/n): ")
+
+        if replace_table_action == 'y':
+            print(f"I will overwrite table '{table_name}' as indicated.'")
+        else:
+            print(f"Quiting to safely retain table {table_name}. Stopping...")
+            sys.exit()
+
+    try:
+        df.to_sql(con=conn, name=table_name,if_exists="replace",index=None)
+        # Inform processing
+        print(f"Table '{table_name}' created in: '{db}'")
+    
+    except Exception as error:
+        print(error)
+        
+def check_smiles(smiles):
+    
+    try:     
+        mol = Chem.MolFromSmiles(smiles)
+
+        if mol is None:
+            print(f"Problem reading SMILES columns - Example {smiles} \n Stopping...")
+            sys.exit()
+        else:
+            print("SMILES column valid...")
+            
+    except:
+        print(f"Problem reading SMILES columns - Example {smiles} \n Stopping...")
+        sys.exit()
+        
+def write_failed_smiles_to_db(smiles,db,file,cause):
+    conn = tidyscreen.connect_to_db(db)
+    cursor = conn.cursor()
+    
+    # Create a table to store failed SMILES
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS failed_smiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            smiles TEXT, 
+            source TEXT,
+            cause TEXT
+        )
+    """)
+    # Insert the failed SMILES into the table
+    cursor.execute("INSERT INTO failed_smiles (smiles, source, cause) VALUES (?,?,?)", (smiles,file,cause))
+    conn.commit()
+    conn.close()
+
+def delete_nulls_table(db,table_name,column_name):
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    cursor.execute(f"DELETE FROM {table_name} WHERE {column_name} IS NULL")
+    conn.commit()
+    conn.close()
+
+def timeout_function(function, args=(),kwargs=None, timeout=60,on_timeout_args=None):
+    if kwargs is None:
+        kwargs = {}
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+    #with concurrent.futures.ProcessPoolExecutor() as executor:
+        future = executor.submit(function, *args, **kwargs)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            write_failed_smiles_to_db(on_timeout_args[0],on_timeout_args[1],on_timeout_args[2],on_timeout_args[3])
+            return None
+        
+def sybyl_to_gaff_mol2(input_mol2, output_mol2, sybyl_to_gaff_dict):
+    with open(input_mol2, 'r') as infile, open(output_mol2, 'w') as outfile:
+        atom_section = False
+        for line in infile:
+            if line.startswith("@<TRIPOS>ATOM"):
+                atom_section = True
+                outfile.write(line)
+                continue
+            elif line.startswith("@<TRIPOS>BOND"):
+                atom_section = False
+                outfile.write(line)
+                continue
+
+            if atom_section and line.strip():
+                parts = line.split()
+                if len(parts) > 5:
+                    sybyl_type = parts[5]
+                    gaff_type = sybyl_to_gaff_dict.get(sybyl_type, sybyl_type)
+                    parts[5] = gaff_type
+                    line = "{:<7} {:<4} {:>10} {:>10} {:>10} {:<6} {:>5} {:<4}\n".format(
+                        parts[0], parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7]
+                    ) if len(parts) >= 8 else " ".join(parts) + "\n"
+            outfile.write(line)
+            
+def sybyl_to_gaff_mol2_moldf(sybyl_file,gaff_file,atoms_dict):
+    
+    # Read the mol2 file and make a copy for the gaff version
+    mol_sybyl = moldf.read_mol2(sybyl_file)
+    mol_gaff = copy.deepcopy(mol_sybyl)
+    
+    # Update atom types
+    for idx, row in mol_sybyl['ATOM'].iterrows():
+        sybyl_atom = row['atom_type']
+        gaff_type = atoms_dict.get(sybyl_atom, sybyl_atom)
+        mol_gaff['ATOM'].at[idx,'atom_type'] = gaff_type
+        
+    # Write the modified mol2 file
+    moldf.write_mol2(mol_gaff,gaff_file)
+
+    return gaff_file
+
+def delete_smiles_row_from_table(smiles,db,table_name):
+    conn = sqlite3.connect('your_database.db')
+    cursor = conn.cursor()
+
+    # Delete rows where column_name matches a specific value
+    cursor.execute(f"DELETE FROM {table_name} WHERE SMILES = ?", (smiles,))
+
+    conn.commit()
+    conn.close()
+
+def replace_charge_on_mol2_file(mol2_file,charge_array):
+    # Read the .mol2 file
+    mol = moldf.read_mol2(mol2_file)
+    try:
+        for idx, row in mol['ATOM'].iterrows():
+            mol['ATOM'].loc[idx,['charge']] = charge_array[idx]
+            
+        # Replace the original file with the new one containing replaced charges
+        moldf.write_mol2(mol, mol2_file)
+    
+        return mol2_file
+    
+    except Exception as error:
+        print(Exception)
