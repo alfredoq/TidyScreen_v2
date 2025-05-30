@@ -145,3 +145,18 @@ class ChemSpace:
         cs_utils.drop_mols_columns(db,table_name)
         
         print(f"Purged table '{table_name}' from failed rows")
+        
+    def compute_properties(self,table_name,properties_list=["MolWt","MolLogP","NumHDonors","NumHAcceptors","NumRotatableBonds","TPSA"]):
+        """
+        Will compute the properties for the ligands in the table
+        """
+        db = f"{self.cs_db_path}/chemspace.db"
+        # Read the table into a dataframe
+        df = pd.read_sql_query(f"SELECT * FROM {table_name}", tidyscreen.connect_to_db(db))
+        # Create the columns in the table to store the properties if they do not exists
+        cs_utils.create_properties_columns(db, table_name, properties_list)
+        # # Compute the properties using pandarallel
+        pandarallel.initialize(progress_bar=True)
+        df.parallel_apply(lambda row: cs_utils.compute_properties(row, db, table_name,properties_list), axis=1)
+        
+        
