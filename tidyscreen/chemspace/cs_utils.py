@@ -479,12 +479,12 @@ def append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sy
         print("No computation of molecules was requested. Stopping...")
         sys.exit()
 
-def pdb_from_smiles(smiles,dir):
+def pdb_from_smiles(smiles,dir,conf_rank):
     try:
         mol = Chem.MolFromSmiles(smiles)
         mol_hs = Chem.AddHs(mol)
         confs, mol_hs, ps = generate_ligand_conformers(mol_hs)
-        selected_mol = get_conformer_rank(confs, mol_hs, ps)
+        selected_mol = get_conformer_rank(confs, mol_hs, ps, conf_rank)
         pdb_file, inchi_key = save_ligand_pdb_file(selected_mol,dir)
         # Compute the net charge of the molecule for potential use in antechamber
         net_charge = compute_molecule_net_charge(mol)
@@ -787,12 +787,11 @@ def generate_ligand_conformers(mol,nbr_confs=50,mmff='MMFF94',maxIters=10, confo
     props.numThreads = 1
     confs = AllChem.EmbedMultipleConfs(mol,nbr_confs,props)
     ps = AllChem.MMFFGetMoleculeProperties(mol)
-    #AllChem.MMFFOptimizeMoleculeConfs(mol, mmffVariant=mmff, maxIters=maxIters)
     AllChem.MMFFOptimizeMoleculeConfs(mol, mmffVariant='MMFF94s', maxIters=maxIters)
     
     return confs, mol, ps
 
-def get_conformer_rank(confs, mol_hs, ps,rank=0):
+def get_conformer_rank(confs, mol_hs, ps,conf_rank):
     
     conformers_energies_dict={} # Empty dictionary to store conformers
 
@@ -808,8 +807,12 @@ def get_conformer_rank(confs, mol_hs, ps,rank=0):
     # Sort the dictionary 
     conformers_energies_dict_sorted=sorted(conformers_energies_dict.items(), key=lambda x: x[1])
 
+    # Compute the position of the conformer to be selected based of the percentage provided as 'conf_rank'
+    conf_rank_position = int(len(conformers_energies_dict_sorted) * conf_rank / 100)    
+
+
     # The following will store the lowest energy conformer as .pdbqt
-    selected_conformer = Chem.MolToMolBlock(mol_hs,confId=conformers_energies_dict_sorted[rank][0])
+    selected_conformer = Chem.MolToMolBlock(mol_hs,confId=conformers_energies_dict_sorted[conf_rank_position][0])
     selected_mol = Chem.MolFromMolBlock(selected_conformer, removeHs=False)
 
     return selected_mol
@@ -943,10 +946,10 @@ def create_mols_columns(conn, table_name,list_mol_objects_colnames,list_mol_obje
         sys.exit()
     pass
 
-def compute_and_store_pdb(row,db,table_name,temp_dir):
+def compute_and_store_pdb(row,db,table_name,temp_dir,conf_rank):
     # Prepare and store the corresponding .pdb file
     try:
-        pdb_file, tar_pdb_file, net_charge = general_functions.timeout_function(pdb_from_smiles,(row["SMILES"],temp_dir),timeout=10,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdb_from_smiles' computation"])
+        pdb_file, tar_pdb_file, net_charge = general_functions.timeout_function(pdb_from_smiles,(row["SMILES"],temp_dir,conf_rank),timeout=10,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdb_from_smiles' computation"])
         store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
     except Exception as error:
         fail_message = f"Failed at .pdb molecule computation step - Mol id: {row['id']} - deleted from {table_name}"
