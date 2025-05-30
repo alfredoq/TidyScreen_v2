@@ -134,3 +134,14 @@ class ChemSpace:
         except Exception as error:
             print(f"Error substing table {source_table} \n {error}")
             
+    def purge_failed_in_table(self,table_name):
+        """
+        Will purge the table from all rows with null values in any of the mols columns
+        """
+        db = f"{self.cs_db_path}/chemspace.db"
+        # Purge the original table from failed rows
+        cs_utils.purge_failed_in_table(db,table_name)
+        # Delete the mols columns from the table in order to recompute
+        cs_utils.drop_mols_columns(db,table_name)
+        
+        print(f"Purged table '{table_name}' from failed rows")

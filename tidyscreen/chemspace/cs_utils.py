@@ -949,7 +949,6 @@ def compute_and_store_pdb(row,db,table_name,temp_dir):
         pdb_file, tar_pdb_file, net_charge = general_functions.timeout_function(pdb_from_smiles,(row["SMILES"],temp_dir),timeout=10,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdb_from_smiles' computation"])
         store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
     except Exception as error:
-        print("TIMEOUT!")
         fail_message = f"Failed at .pdb molecule computation step - Mol id: {row['id']} - deleted from {table_name}"
         general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)
 
@@ -1117,3 +1116,34 @@ def compute_bbc_ml_array(smiles,inchi_key,temp_dir):
         print(error)
     
     return charge_array
+
+def purge_failed_in_table(db,table_name):
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Get values from the first table's column
+    cursor.execute("SELECT smiles FROM failed_smiles")
+    values = [row[0] for row in cursor.fetchall()]
+    
+    # Delete rows in the second table where the column matches those values
+    for value in values:
+        cursor.execute(f"DELETE FROM {table_name} WHERE SMILES = ?", (value,))
+
+    conn.commit()
+    conn.close()
+    
+def drop_mols_columns(db,table_name):
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Create a new table without the unwanted columns
+    cursor.execute(f"CREATE TABLE new_table AS SELECT id, SMILES, name, flag, stereo_nbr, inchi_key FROM {table_name}")
+    
+    # Drop the old table
+    cursor.execute(f"DROP TABLE {table_name}")
+    
+    # 3. Rename the new table to the original name
+    cursor.execute(f"ALTER TABLE new_table RENAME TO {table_name}")
+
+    conn.commit()
+    conn.close()
