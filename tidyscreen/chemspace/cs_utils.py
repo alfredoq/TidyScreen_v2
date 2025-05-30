@@ -23,6 +23,7 @@ import time
 import pickle
 import multiprocessing
 from espaloma_charge import charge
+from rdkit.Chem import Descriptors
 
 def check_smiles(smiles):
     
@@ -1150,3 +1151,49 @@ def drop_mols_columns(db,table_name):
 
     conn.commit()
     conn.close()
+    
+def create_properties_columns(db, table_name, properties_list):
+    """
+    Create the properties columns if they do not exist in the target table.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    for prop in properties_list:
+        # Check if the column already exists
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        columns = [column[1] for column in cursor.fetchall()]
+        
+        if prop not in columns:
+            # If the column does not exist, create it
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {prop} REAL")
+    
+    conn.commit()
+
+def compute_properties(row, db, table_name, properties_list):
+    # Create an empty dataframe to store the properties
+    prop_df = pd.DataFrame(columns=properties_list)
+    # Create the properties columns if they do not exist in the target table
+    mol = Chem.MolFromSmiles(row["SMILES"])
+    if mol is None:
+        props_list = [None] * len(properties_list)
+    
+    props_list =  [getattr(Descriptors, prop)(mol) for prop in properties_list]
+    
+    # Store the properties in database 
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Properties columns to update
+    set_clause = ', '.join([f"{prop} = ?" for prop in properties_list])
+    
+    try: 
+        cursor.execute(f"UPDATE {table_name} SET {set_clause} WHERE id = ?",(*props_list, row["id"]))
+        conn.commit()
+    except Exception as error:
+        print(f"Error updating properties for SMILES: {row['SMILES']}")
+        print(error)    
+    
+
+
+      
