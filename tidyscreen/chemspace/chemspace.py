@@ -159,4 +159,16 @@ class ChemSpace:
         pandarallel.initialize(progress_bar=True)
         df.parallel_apply(lambda row: cs_utils.compute_properties(row, db, table_name,properties_list), axis=1)
         
-        
+    def subset_table_by_properties(self,table_name,props_filter):
+        """
+        Will subset the source table by a given property and store the result in the destination table
+        """
+        db = f"{self.cs_db_path}/chemspace.db"
+        try:
+            current_subset = cs_utils.write_subset_record_to_db(db,table_name,"by_props",props_filter)
+            cs_utils.subset_table_by_properties(db,table_name,current_subset,props_filter)
+            print(f"Succesfully subseted table: '{table_name}' by properties: '{props_filter}'")
+        except Exception as error:
+            print(f"Error subseting table {table_name} by property {props_filter} \n {error}")
+    
+    
