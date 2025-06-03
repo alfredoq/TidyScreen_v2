@@ -1196,4 +1196,47 @@ def compute_properties(row, db, table_name, properties_list):
     
 
 
-      
+def write_subset_record_to_db(db,table_name,type,prop_filter):
+    """
+    Write a subset of records to the database based on a property filter.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    print(prop_filter)
+    
+    # Create a new table for the subset
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS tables_subsets ( id INTEGER PRIMARY KEY AUTOINCREMENT, table_name TEXT, subset_name TEXT, fitering_type TEXT, prop_filter TEXT)")
+    
+    # Insert records into the subset table - This is the first addition to assign an id
+    cursor.execute(f"INSERT INTO tables_subsets (table_name, subset_name, fitering_type, prop_filter) VALUES (?, ?, ?, ?)",(table_name, f"{table_name}_subset", type, str(prop_filter)))
+    
+    current_id = cursor.lastrowid
+    
+    # Step 2: Update the row with a string containing the current id
+    current_subset = f"{table_name}_subset_{current_id}"
+    cursor.execute("UPDATE tables_subsets SET subset_name = ? WHERE id = ?", (current_subset, current_id))
+    
+    conn.commit()
+    conn.close()
+    
+    return current_subset
+
+def subset_table_by_properties(db,table_name,current_subset,props_filter):
+    """
+    Subset the table by properties and store the results in a new table.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Create a new table for the subset
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS {current_subset} AS SELECT * FROM {table_name} WHERE 1=0")  # Create an empty table with the same structure
+        
+    # Build the WHERE clause from the filter list
+    where_clause = " AND ".join(props_filter)
+    
+    # Insert records into the subset table
+    cursor.execute(f"INSERT INTO {current_subset} SELECT * FROM {table_name} WHERE {where_clause}")
+    
+    conn.commit()
+    conn.close()
