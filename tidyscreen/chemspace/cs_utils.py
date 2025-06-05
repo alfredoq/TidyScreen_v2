@@ -37,7 +37,7 @@ def check_smiles(smiles):
     else:
         print("SMILES column valid...")
 
-def process_input_df(df,db,file):
+def process_input_df(df,db,file,stereo_enum):
     """
     Will rename the columns of the df constructed from a .csv input. If 'name' or 'flag' columns does not exist they will be created.
     """

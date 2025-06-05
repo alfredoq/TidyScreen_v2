@@ -25,7 +25,7 @@ class ChemSpace:
         if not os.path.exists(f"{self.cs_db_path}/chemspace.db"):
             print("Database does not exists.")
 
-    def input_csv(self, file):
+    def input_csv(self, file, stereo_enum=0):
         """
         Will read a .csv file and store it into de corresponding database
         """
@@ -35,7 +35,7 @@ class ChemSpace:
         # Check if the first element is a valid SMILES - Will stop the process if not
         general_functions.check_smiles(first_element)
         # Make all the processing on the generated df (sanitization, enumeration, inchi key calculation)
-        df = cs_utils.process_input_df(df,self.cs_database_file,file)
+        df = cs_utils.process_input_df(df,self.cs_database_file,file,stereo_enum)
         # Store the final df into de database
         general_functions.save_df_to_db(self.cs_database_file,df,target_table_name)
         
