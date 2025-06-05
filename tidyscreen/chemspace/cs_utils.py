@@ -576,31 +576,6 @@ def sybyl_mol2_from_pdb(inchi_key,charge,temp_dir):
         
     return output_file, output_tar_file
 
-# def gaff_mol2_from_pdb(inchi_key,charge,temp_dir):
-    
-#     pdb_file = f"{temp_dir}/{inchi_key}.pdb"
-#     output_file = f"{temp_dir}/{inchi_key}_gaff.mol2"
-#     # Since Antechamber creates temporary files for the calculation, and they should not overwrite each other when executing in parallel, create a temporary folder following the molecule InChIKey, 'cd' into it and run the computation.
-#     antechamber_temp_folder = f"{temp_dir}/{inchi_key}"
-#     os.makedirs(antechamber_temp_folder,exist_ok=True) # Create the corresponding temp directory
-#     # Compute the ligand net charge
-#     net_charge = compute_charge_from_pdb(pdb_file)
-#     # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
-#     antechamber_path = shutil.which('antechamber')
-#     try: 
-#         antechamber_command = f'cd {antechamber_temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge} -nc {net_charge} -at gaff -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
-#         subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
-
-#         # Once computation finished, delete the ligand temporary folder
-#         shutil.rmtree(antechamber_temp_folder)        
-            
-#     except Exception as error:
-#         print(error)
-#     # # Compress the output file for storage
-#     output_tar_file = generate_tar_file(output_file)
-        
-#     return output_file, output_tar_file
-
 def compute_frcmod_file(mol2_file,at):
     # Get the prefixes for the file
     file_prefix = mol2_file.split('/')[-1].replace(f"_{at}.mol2","")
@@ -1305,7 +1280,6 @@ def parse_smarts_filters_dict(db_filters,db_workflow,smarts_filters_dict):
     
     return filters_instances_dict, filters_names_list
 
-
 def check_workflow_existence(db_workflow,filters_instances_dict):
     
     """
@@ -1332,7 +1306,6 @@ def check_workflow_existence(db_workflow,filters_instances_dict):
     except Exception as error: # This caught will be raised if the table does not exist yet
         print("SMARTS workflows table does not exist yet. Creating it...")
         pass # The failure will pass if the table does not exist yet
-    
 
 def store_smarts_filters_workflow(db_workflow,filters_instances_dict,filters_names_list,smarts_filters_dict):
     """
@@ -1386,7 +1359,6 @@ def subset_table_by_smarts_dict(db,table_name,filters_instances_dict):
         df.drop(columns=["smarts_instances"], inplace=True)
     
     return df
-
 
 def check_smiles_vs_smarts(smiles, smarts):
     """
