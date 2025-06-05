@@ -71,7 +71,7 @@ def process_input_df(df,db,file,stereo_enum):
     # Enumerate stereoisomers in parallel
     pandarallel.initialize(progress_bar=False) 
     # Enumerate stereoisomers if requested
-    if stereo_enum
+    if stereo_enum:
         print("Enumerating stereoisomers")
         df = pd.DataFrame() # Create the enumerated dataframe to return values from pandarallel
         df[["SMILES","name","flag","stereo_nbr","stereo_config"]] = df.parallel_apply(lambda row: enumerate_stereoisomers_single(row,db,file), axis=1, result_type="expand")
