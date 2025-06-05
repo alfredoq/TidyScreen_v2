@@ -1349,7 +1349,6 @@ def subset_table_by_smarts_dict(db,table_name,filters_instances_dict):
     conn.close()    
     
     for smarts, instances in filters_instances_dict.items():
-        print("Processing SMARTS pattern: ", smarts)
         # Use pandarallel for parallel processing and count the instances of each SMARTS pattern
         pandarallel.initialize(progress_bar=True)
         df["smarts_instances"] = df['SMILES'].parallel_apply(lambda smiles: check_smiles_vs_smarts(smiles, smarts))
