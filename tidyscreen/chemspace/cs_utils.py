@@ -1406,4 +1406,22 @@ def check_smiles_vs_smarts(smiles, smarts):
     else:
         return 0
     
+def list_available_smarts_filters(db):
+    """
+    List all available SMARTS filters in the database.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
     
+    cursor.execute("SELECT * FROM chem_filters")
+    rows = cursor.fetchall()
+    
+    if not rows:
+        print("No SMARTS filters found in the database.")
+        return []
+    
+    print("Available SMARTS filters:")
+    for row in rows:
+        print(f"Filter_id: {row[0]}, Filter_Name: {row[1]}, SMARTS: {row[2]}")
+    
+    #return rows

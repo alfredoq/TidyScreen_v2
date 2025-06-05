@@ -172,7 +172,6 @@ class ChemSpace:
         except Exception as error:
             print(f"Error subseting table {table_name} by property {props_filter} \n {error}")
     
-    
     def add_smarts_filter(self,smarts_filter,description=None):
         try: 
             db = self.projects_db
@@ -181,7 +180,6 @@ class ChemSpace:
             print(f"Succesfully added SMARTS filter: '{smarts_filter}'")
         except Exception as error:
             print(f"Error inserting SMARTS filter: '{smarts_filter}' \n {error}")
-    
     
     def create_smarts_filters_workflow(self,smarts_filters_dict):
         """
@@ -207,4 +205,10 @@ class ChemSpace:
         general_functions.save_df_to_db(db,filtered_df,current_subset)
         # Inform the user
         print(f"Succesfully subseted table: '{table_name}' by SMARTS filters workflow with ID: '{workflow_id}'")
-        
+    
+    def list_available_smarts_filters(self):
+        """
+        Will list all available SMARTS filters in the project
+        """
+        db = self.projects_db
+        cs_utils.list_available_smarts_filters(db)
