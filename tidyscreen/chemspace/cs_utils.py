@@ -77,6 +77,7 @@ def process_input_df(df,db,file,stereo_enum):
         df[["SMILES","name","flag","stereo_nbr","stereo_config"]] = df.parallel_apply(lambda row: enumerate_stereoisomers_single(row,db,file), axis=1, result_type="expand")
         # Computation the InChI key for the whole dataframe in parallel
     # Compute the InChIKey for the whole dataframe
+    
     print("Computing InChIKey")
     pandarallel.initialize(progress_bar=False)
     df["inchi_key"] = df.parallel_apply(lambda row: compute_inchi_key_refactored(row,db,file),axis=1)
