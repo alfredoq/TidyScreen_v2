@@ -61,14 +61,14 @@ def process_input_df(df,db,file,stereo_enum):
 
     ### The processing of the SMILES will be done in the following order:
     # Initialize pandarallel to process all steps in parallel
-    pandarallel.initialize(progress_bar=False) 
+    pandarallel.initialize(progress_bar=True) 
     # Sanitization performed in parallel
     print("Sanitizing SMILES")
     df[["SMILES","name","flag"]] = df.parallel_apply(lambda row: sanitize_smiles_single(row,db,file), axis=1, result_type="expand")
     # Drop rows excluded by sanitization
     df = df.dropna()
     # Enumerate stereoisomers in parallel
-    pandarallel.initialize(progress_bar=False) 
+    pandarallel.initialize(progress_bar=True) 
     # Enumerate stereoisomers if requested
     if stereo_enum == 1:
         print("Enumerating stereoisomers")
@@ -78,7 +78,7 @@ def process_input_df(df,db,file,stereo_enum):
     
     # Compute the InChIKey for the whole dataframe
     print("Computing InChIKey")
-    pandarallel.initialize(progress_bar=False)
+    pandarallel.initialize(progress_bar=True)
     df["inchi_key"] = df.parallel_apply(lambda row: compute_inchi_key_refactored(row,db,file),axis=1)
     # Delete duplicated molecules based on inchi_key
     df = df.drop_duplicates(subset='inchi_key', keep='first')
