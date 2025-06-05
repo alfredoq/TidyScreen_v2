@@ -8,6 +8,7 @@ from tidyscreen.GeneralFunctions import general_functions as general_functions
 from rdkit import RDLogger
 from pandarallel import pandarallel
 import shutil
+import sqlite3
 # Suppress RDKit warnings and errors
 RDLogger.DisableLog('rdApp.*')
 
@@ -16,6 +17,7 @@ class ChemSpace:
     def __init__(self, project):
         self.env_path = '/'.join(tidyscreen.__file__.split('/')[:-1])
         self.project = project
+        self.projects_db = f"{self.env_path}/projects_db/projects_database.db"
         self.cs_db_path = self.project.proj_folders_path["chemspace"]["processed_data"]
         self.cs_database_file = f"{self.cs_db_path}/chemspace.db"
 
@@ -55,7 +57,7 @@ class ChemSpace:
         # call the depiction function
         cs_utils.depict_ligands_table(db,table_name,output_path)
         
-        print("finished")
+        print(f"Successfully depicted ligands in table: '{output_path}'")
 
     def generate_mols_in_table(self,table_name,charge="bcc-ml",pdb=1,mol2=1,pdbqt=1,conf_rank=0):
         """
@@ -172,3 +174,38 @@ class ChemSpace:
             print(f"Error subseting table {table_name} by property {props_filter} \n {error}")
     
     
+    def add_smarts_filter(self,smarts_filter,description=None):
+        try: 
+            db = self.projects_db
+            cs_utils.check_smarts_existence(db,smarts_filter)
+            cs_utils.insert_smarts_filter_in_table(db,smarts_filter,description)
+            print(f"Succesfully added SMARTS filter: '{smarts_filter}'")
+        except Exception as error:
+            print(f"Error inserting SMARTS filter: '{smarts_filter}' \n {error}")
+    
+    
+    def create_smarts_filters_workflow(self,smarts_filters_dict):
+        """
+        Will create a workflow to subset a table by SMARTS filters
+        """
+        db_workflow = f"{self.cs_db_path}/chemspace.db"
+        db_filters = self.projects_db
+        
+        filters_instances_dict, filters_names_list = cs_utils.parse_smarts_filters_dict(db_filters,db_workflow,smarts_filters_dict)
+        cs_utils.check_workflow_existence(db_workflow,filters_instances_dict)
+        cs_utils.store_smarts_filters_workflow(db_workflow,filters_instances_dict,filters_names_list,smarts_filters_dict)
+        print(f"Succesfully created SMARTS filters workflow with filters: '{filters_instances_dict}'")
+    
+    def subset_table_by_smarts_workflow(self,table_name,workflow_id):
+        db = f"{self.cs_db_path}/chemspace.db"
+        # Retrieve the filters instances dict from the database using the workflow_id
+        filters_instances_dict = cs_utils.retrieve_workflow_from_db(db,workflow_id)
+        # Generate the target table name
+        current_subset = cs_utils.write_subset_record_to_db(db,table_name,"by_smarts",filters_instances_dict)
+        # Filter the table by the SMARTS filters
+        filtered_df = cs_utils.subset_table_by_smarts_dict(db,table_name,filters_instances_dict)
+        # Store the final df into de database
+        general_functions.save_df_to_db(db,filtered_df,current_subset)
+        # Inform the user
+        print(f"Succesfully subseted table: '{table_name}' by SMARTS filters workflow with ID: '{workflow_id}'")
+        
