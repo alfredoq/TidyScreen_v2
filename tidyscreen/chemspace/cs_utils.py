@@ -24,6 +24,8 @@ import pickle
 import multiprocessing
 from espaloma_charge import charge
 from rdkit.Chem import Descriptors
+import json
+
 
 def check_smiles(smiles):
     
@@ -1193,8 +1195,6 @@ def compute_properties(row, db, table_name, properties_list):
     except Exception as error:
         print(f"Error updating properties for SMILES: {row['SMILES']}")
         print(error)    
-    
-
 
 def write_subset_record_to_db(db,table_name,type,prop_filter):
     """
@@ -1240,3 +1240,167 @@ def subset_table_by_properties(db,table_name,current_subset,props_filter):
     
     conn.commit()
     conn.close()
+
+def check_smarts_existence(db,smarts_filter):
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    try: 
+        # Retrieve the SMARTS filter from the database if exists
+        cursor.execute("SELECT 1 FROM chem_filters WHERE smarts = ?", (smarts_filter,))
+        exists = cursor.fetchone() is not None
+        
+        # Inform and stop if the SMARTS filter exists
+        if exists:
+            print(f"The filter: {smarts_filter} already exists in the environment 'chem_filters' table. Stopping...")
+            sys.exit()
+    
+    except SystemExit: # This will be raised if the SMARTS filter already exists in the database
+        raise
+    
+    except Exception as error: # This caught will be raised if the table does not exist yet
+        print("SMARTS filter table does not exist yet. Creating it...")
+        pass # The failure will pass if the table does not exist yet
+
+def insert_smarts_filter_in_table(db,smarts_filter,description):
+    """
+    Insert a SMARTS filter into the database.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Create a new table for the SMARTS filters if it does not exist
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS chem_filters (id INTEGER PRIMARY KEY AUTOINCREMENT, smarts TEXT, description TEXT)")
+    
+    # Insert the SMARTS filter into the table
+    cursor.execute("INSERT INTO chem_filters (smarts, description) VALUES (?,?)", (smarts_filter,description,))
+    
+    conn.commit()
+    conn.close()
+    
+def parse_smarts_filters_dict(db_filters,db_workflow,smarts_filters_dict):
+    
+    # Create a dict of SMARTS filters to be used in the workflow
+    conn = sqlite3.connect(db_filters)
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM chem_filters")
+    rows = cursor.fetchall()
+    
+    # Build the new dictionary
+    filters_instances_dict = {}
+    filters_names_list = []
+    for row in rows:
+        filter_id = row[0]
+        if filter_id in smarts_filters_dict:
+            filter_name = row[1]
+            filter_smarts = row[2]
+            filter_instances = smarts_filters_dict[filter_id]
+            filters_instances_dict[filter_smarts] = filter_instances
+            filters_names_list.append(filter_name)
+    
+    
+    return filters_instances_dict, filters_names_list
+
+
+def check_workflow_existence(db_workflow,filters_instances_dict):
+    
+    """
+    Check if the workflow already exists in the database.
+    """
+    conn = sqlite3.connect(db_workflow)
+    cursor = conn.cursor()
+    
+    patter_to_check = json.dumps(filters_instances_dict)
+    
+    try: 
+        # Check if the JSON string exists in the column 'dict_column' of 'my_table'
+        cursor.execute("SELECT 1 FROM smarts_filters_workflow WHERE filters_instances = ?", (patter_to_check,))
+        exists = cursor.fetchone() is not None
+        
+        # Inform and stop if the SMARTS filter exists
+        if exists:
+            print(f"The filter: {filters_instances_dict} already exists as a workflow. Stopping...")
+            sys.exit()
+    
+    except SystemExit: # This will be raised if the SMARTS filter already exists in the database
+        raise
+    
+    except Exception as error: # This caught will be raised if the table does not exist yet
+        print("SMARTS workflows table does not exist yet. Creating it...")
+        pass # The failure will pass if the table does not exist yet
+    
+
+def store_smarts_filters_workflow(db_workflow,filters_instances_dict,filters_names_list,smarts_filters_dict):
+    """
+    Store the SMARTS filters workflow in the database.
+    """
+    conn = sqlite3.connect(db_workflow)
+    cursor = conn.cursor()
+    
+    # Create a new table for the SMARTS filters workflow if it does not exist
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS smarts_filters_workflow (id INTEGER PRIMARY KEY AUTOINCREMENT, filters_instances TEXT, filters_names TEXT, filters_specification TEXT)")
+    
+    # Insert the SMARTS filters workflow into the table
+    cursor.execute("INSERT INTO smarts_filters_workflow (filters_instances, filters_names, filters_specification) VALUES (?,?,?)", ((json.dumps(filters_instances_dict)),str(filters_names_list),(json.dumps(smarts_filters_dict)),))
+    
+    conn.commit()
+    conn.close()
+    
+def retrieve_workflow_from_db(db,workflow_id):
+    """
+    Retrieve the SMARTS filters workflow from the database.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Retrieve the workflow from the table
+    cursor.execute("SELECT filters_instances FROM smarts_filters_workflow WHERE id = ?", (workflow_id,))
+    row = cursor.fetchone()
+    
+    if row is None:
+        print(f"No SMARTS filter workflow found with ID: '{workflow_id}'. Stopping...")
+        sys.exit()
+    
+    filters_instances_dict = json.loads(row[0])
+    
+    return filters_instances_dict
+
+def subset_table_by_smarts_dict(db,table_name,filters_instances_dict):
+    
+    conn = sqlite3.connect(db)
+    df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
+    conn.close()    
+    
+    for smarts, instances in filters_instances_dict.items():
+        print("Processing SMARTS pattern: ", smarts)
+        # Use pandarallel for parallel processing and count the instances of each SMARTS pattern
+        pandarallel.initialize(progress_bar=False)
+        df["smarts_instances"] = df['SMILES'].parallel_apply(lambda smiles: check_smiles_vs_smarts(smiles, smarts))
+        # Delete rows where the count of instances is different than the specified number
+        df = df[df["smarts_instances"] == instances]
+        # Delete the instaces column for the next iteration
+        df.drop(columns=["smarts_instances"], inplace=True)
+    
+    return df
+
+
+def check_smiles_vs_smarts(smiles, smarts):
+    """
+    Check if the SMILES string matches the SMARTS pattern.
+    """
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return 0
+    
+    pattern = Chem.MolFromSmarts(smarts)
+    
+    if mol is not None and pattern is not None:
+        matches = mol.GetSubstructMatches(pattern)
+        matches_instances = len(matches)
+        
+        return matches_instances
+    else:
+        return 0
+    
+    
