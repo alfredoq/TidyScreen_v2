@@ -36,7 +36,7 @@ class ChemSpace:
         # Make all the processing on the generated df (sanitization, enumeration, inchi key calculation)
         df = cs_utils.process_input_df(df,self.cs_database_file,file,stereo_enum)
         # Store the final df into de database
-        #general_functions.save_df_to_db(self.cs_database_file,df,target_table_name)
+        general_functions.save_df_to_db(self.cs_database_file,df,target_table_name)
         
     def list_ligand_tables(self):
         """
