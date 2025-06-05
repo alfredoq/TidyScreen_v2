@@ -64,25 +64,28 @@ def process_input_df(df,db,file,stereo_enum):
     pandarallel.initialize(progress_bar=False) 
     # Sanitization performed in parallel
     print("Sanitizing SMILES")
-    df_sanitized = pd.DataFrame()
-    df_sanitized[["SMILES","name","flag"]] = df.parallel_apply(lambda row: sanitize_smiles_single(row,db,file), axis=1, result_type="expand")
+    df = pd.DataFrame()
+    df[["SMILES","name","flag"]] = df.parallel_apply(lambda row: sanitize_smiles_single(row,db,file), axis=1, result_type="expand")
     # Drop rows excluded by sanitization
-    df_sanitized = df_sanitized.dropna()
+    df = df.dropna()
     # Enumerate stereoisomers in parallel
     pandarallel.initialize(progress_bar=False) 
-    print("Enumerating stereoisomers")
-    df_enumerated = pd.DataFrame() # Create the enunmerated dataframe to return values from pandarallel
-    df_enumerated[["SMILES","name","flag","stereo_nbr","stereo_config"]] = df_sanitized.parallel_apply(lambda row: enumerate_stereoisomers_single(row,db,file), axis=1, result_type="expand")
-    # Computation the InChI key for the whole dataframe in parallel
+    # Enumerate stereoisomers if requested
+    if stereo_enum
+        print("Enumerating stereoisomers")
+        df = pd.DataFrame() # Create the enumerated dataframe to return values from pandarallel
+        df[["SMILES","name","flag","stereo_nbr","stereo_config"]] = df.parallel_apply(lambda row: enumerate_stereoisomers_single(row,db,file), axis=1, result_type="expand")
+        # Computation the InChI key for the whole dataframe in parallel
+    # Compute the InChIKey for the whole dataframe
     print("Computing InChIKey")
     pandarallel.initialize(progress_bar=False)
-    df_enumerated["inchi_key"] = df_enumerated.parallel_apply(lambda row: compute_inchi_key_refactored(row,db,file),axis=1)
+    df["inchi_key"] = df.parallel_apply(lambda row: compute_inchi_key_refactored(row,db,file),axis=1)
     # Delete duplicated molecules based on inchi_key
-    df_ready_checked = df_enumerated.drop_duplicates(subset='inchi_key', keep='first')
+    df = df.drop_duplicates(subset='inchi_key', keep='first')
     # Create an 'id' column
-    df_ready_checked = df_ready_checked.reset_index().rename(columns={'index':'id'})
+    df = df.reset_index().rename(columns={'index':'id'})
 
-    return df_ready_checked
+    return df
 
 def sanitize_smiles(df,db,file):
     # Create the output dataframe containing the sanitized SMILES
