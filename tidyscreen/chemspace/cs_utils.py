@@ -1353,7 +1353,6 @@ def check_smarts_reaction_workflow_existence(db,smarts_list):
         print("SMARTS workflows table does not exist yet. Creating it...")
         pass # The failure will pass if the table does not exist yet
 
-
 def store_smarts_filters_workflow(db_workflow,filters_instances_dict,filters_names_list,smarts_filters_dict):
     """
     Store the SMARTS filters workflow in the database.
@@ -1467,7 +1466,6 @@ def insert_smarts_reaction_in_table(db,smarts_reaction,description):
     
     conn.commit()
     conn.close()
-
 
 def parse_smarts_reactions_id_list(db,smarts_reactions_id_list):
     """
