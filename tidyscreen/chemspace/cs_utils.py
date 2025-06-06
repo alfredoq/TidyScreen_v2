@@ -1174,7 +1174,7 @@ def compute_properties(row, db, table_name, properties_list):
         print(f"Error updating properties for SMILES: {row['SMILES']}")
         print(error)    
 
-def write_subset_record_to_db(db,table_name,type,prop_filter):
+def write_subset_record_to_db(db,table_name,type,prop_filter,description):
     """
     Write a subset of records to the database based on a property filter.
     """
@@ -1182,10 +1182,10 @@ def write_subset_record_to_db(db,table_name,type,prop_filter):
     cursor = conn.cursor()
     
     # Create a new table for the subset
-    cursor.execute(f"CREATE TABLE IF NOT EXISTS tables_subsets ( id INTEGER PRIMARY KEY AUTOINCREMENT, table_name TEXT, subset_name TEXT, fitering_type TEXT, prop_filter TEXT)")
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS tables_subsets ( id INTEGER PRIMARY KEY AUTOINCREMENT, table_name TEXT, subset_name TEXT, fitering_type TEXT, prop_filter TEXT, description TEXT)")
     
     # Insert records into the subset table - This is the first addition to assign an id
-    cursor.execute(f"INSERT INTO tables_subsets (table_name, subset_name, fitering_type, prop_filter) VALUES (?, ?, ?, ?)",(table_name, f"{table_name}_subset", type, str(prop_filter)))
+    cursor.execute(f"INSERT INTO tables_subsets (table_name, subset_name, fitering_type, prop_filter, description) VALUES (?, ?, ?, ?, ?)",(table_name, f"{table_name}_subset", type, str(prop_filter), description))
     
     current_id = cursor.lastrowid
     
@@ -1334,7 +1334,6 @@ def store_smarts_filters_workflow(db_workflow,filters_instances_dict,filters_nam
     cursor = conn.cursor()
     
     description = input("Plovide a description for the SMARTS filters workflow: ")
-    
     # Create a new table for the SMARTS filters workflow if it does not exist
     cursor.execute(f"CREATE TABLE IF NOT EXISTS smarts_filters_workflow (id INTEGER PRIMARY KEY AUTOINCREMENT, filters_instances TEXT, filters_names TEXT, filters_specification TEXT, description TEXT)")
     
@@ -1382,6 +1381,9 @@ def subset_table_by_smarts_dict(db,table_name,filters_instances_dict):
         df = df[df["smarts_instances"] == instances]
         # Delete the instaces column for the next iteration
         df.drop(columns=["smarts_instances"], inplace=True)
+    
+    # Reset the index of the DataFrame
+    df.reset_index(drop=True, inplace=True)
     
     return df
 

@@ -159,13 +159,14 @@ class ChemSpace:
         pandarallel.initialize(progress_bar=True)
         df.parallel_apply(lambda row: cs_utils.compute_properties(row, db, table_name,properties_list), axis=1)
         
-    def subset_table_by_properties(self,table_name,props_filter):
+    def subset_table_by_properties(self,table_name,props_filter,):
         """
         Will subset the source table by a given property and store the result in the destination table
         """
         db = f"{self.cs_db_path}/chemspace.db"
         try:
-            current_subset = cs_utils.write_subset_record_to_db(db,table_name,"by_props",props_filter)
+            description = input("Enter a description for the subset: ")
+            current_subset = cs_utils.write_subset_record_to_db(db,table_name,"by_props",props_filter,description)
             cs_utils.subset_table_by_properties(db,table_name,current_subset,props_filter)
             print(f"Succesfully subseted table: '{table_name}' by properties: '{props_filter}'")
         except Exception as error:
@@ -193,17 +194,21 @@ class ChemSpace:
         print(f"Succesfully created SMARTS filters workflow with filters: '{filters_instances_dict}'")
     
     def subset_table_by_smarts_workflow(self,table_name,workflow_id):
-        db = f"{self.cs_db_path}/chemspace.db"
-        # Retrieve the filters instances dict from the database using the workflow_id
-        filters_instances_dict = cs_utils.retrieve_workflow_from_db(db,workflow_id)
-        # Generate the target table name
-        current_subset = cs_utils.write_subset_record_to_db(db,table_name,"by_smarts",filters_instances_dict)
-        # Filter the table by the SMARTS filters
-        filtered_df = cs_utils.subset_table_by_smarts_dict(db,table_name,filters_instances_dict)
-        # Store the final df into de database
-        general_functions.save_df_to_db(db,filtered_df,current_subset)
-        # Inform the user
-        print(f"Succesfully subseted table: '{table_name}' by SMARTS filters workflow with ID: '{workflow_id}'")
+        try:
+            db = f"{self.cs_db_path}/chemspace.db"
+            # Retrieve the filters instances dict from the database using the workflow_id
+            filters_instances_dict = cs_utils.retrieve_workflow_from_db(db,workflow_id)
+            # Generate the target table name
+            description = input("Enter a description for the subset: ")
+            current_subset = cs_utils.write_subset_record_to_db(db,table_name,"by_smarts",filters_instances_dict,description)
+            # Filter the table by the SMARTS filters
+            filtered_df = cs_utils.subset_table_by_smarts_dict(db,table_name,filters_instances_dict)
+            # Store the final df into de database
+            general_functions.save_df_to_db(db,filtered_df,current_subset)
+            # Inform the user
+            print(f"Succesfully subseted table: '{table_name}' by SMARTS filters workflow with ID: '{workflow_id}'")
+        except:
+            print("An error occurred while trying to subset the table by SMARTS filters workflow. Please check the inputs and try again.")
     
     def list_available_smarts_filters(self):
         """
@@ -230,7 +235,6 @@ class ChemSpace:
         conn.close()
         
         print(f"Successfully copied table '{old_table_name}' to '{new_table_name}'")
-        
         
     def add_smarts_reaction(self,smarts_reaction,description=None):
         try: 
