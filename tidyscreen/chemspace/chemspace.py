@@ -212,3 +212,22 @@ class ChemSpace:
         """
         db = self.projects_db
         cs_utils.list_available_smarts_filters(db)
+        
+    def copy_table_to_new_name(self, old_table_name, new_table_name):
+        """
+        Copy the content of an existing table to a new table with a different name.
+        """
+        db = f"{self.cs_db_path}/chemspace.db"
+        conn = sqlite3.connect(db)
+        cursor = conn.cursor()
+        
+        # Create the new table with the same structure as the old table
+        cursor.execute(f"CREATE TABLE IF NOT EXISTS {new_table_name} AS SELECT * FROM {old_table_name} WHERE 1=0")
+        
+        # Copy the content from the old table to the new table
+        cursor.execute(f"INSERT INTO {new_table_name} SELECT * FROM {old_table_name}")
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"Successfully copied table '{old_table_name}' to '{new_table_name}'")

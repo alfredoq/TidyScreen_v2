@@ -1398,4 +1398,4 @@ def list_available_smarts_filters(db):
     for row in rows:
         print(f"Filter_id: {row[0]}, Filter_Name: {row[1]}, SMARTS: {row[2]}")
     
-    #return rows
+    
