@@ -1312,11 +1312,13 @@ def store_smarts_filters_workflow(db_workflow,filters_instances_dict,filters_nam
     conn = sqlite3.connect(db_workflow)
     cursor = conn.cursor()
     
+    description = input("Plovide a description for the SMARTS filters workflow: ")
+    
     # Create a new table for the SMARTS filters workflow if it does not exist
-    cursor.execute(f"CREATE TABLE IF NOT EXISTS smarts_filters_workflow (id INTEGER PRIMARY KEY AUTOINCREMENT, filters_instances TEXT, filters_names TEXT, filters_specification TEXT)")
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS smarts_filters_workflow (id INTEGER PRIMARY KEY AUTOINCREMENT, filters_instances TEXT, filters_names TEXT, filters_specification TEXT, description TEXT)")
     
     # Insert the SMARTS filters workflow into the table
-    cursor.execute("INSERT INTO smarts_filters_workflow (filters_instances, filters_names, filters_specification) VALUES (?,?,?)", ((json.dumps(filters_instances_dict)),str(filters_names_list),(json.dumps(smarts_filters_dict)),))
+    cursor.execute("INSERT INTO smarts_filters_workflow (filters_instances, filters_names, filters_specification, description) VALUES (?,?,?,?)", ((json.dumps(filters_instances_dict)),str(filters_names_list),(json.dumps(smarts_filters_dict)),description,))
     
     conn.commit()
     conn.close()
