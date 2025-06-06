@@ -12,7 +12,6 @@ import sqlite3
 # Suppress RDKit warnings and errors
 RDLogger.DisableLog('rdApp.*')
 
-
 class ChemSpace:
     def __init__(self, project):
         self.env_path = '/'.join(tidyscreen.__file__.split('/')[:-1])
