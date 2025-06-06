@@ -1181,8 +1181,6 @@ def write_subset_record_to_db(db,table_name,type,prop_filter):
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
     
-    print(prop_filter)
-    
     # Create a new table for the subset
     cursor.execute(f"CREATE TABLE IF NOT EXISTS tables_subsets ( id INTEGER PRIMARY KEY AUTOINCREMENT, table_name TEXT, subset_name TEXT, fitering_type TEXT, prop_filter TEXT)")
     
@@ -1352,6 +1350,8 @@ def subset_table_by_smarts_dict(db,table_name,filters_instances_dict):
     sorted_dict = dict(sorted(filters_instances_dict.items(), key=lambda item: item[1], reverse=True))
     
     for smarts, instances in sorted_dict.items():
+        print(f"Filtering by SMARTS: '{smarts}' with '{instances}' instances")
+        
         # Use pandarallel for parallel processing and count the instances of each SMARTS pattern
         pandarallel.initialize(progress_bar=True)
         df["smarts_instances"] = df['SMILES'].parallel_apply(lambda smiles: check_smiles_vs_smarts(smiles, smarts))
