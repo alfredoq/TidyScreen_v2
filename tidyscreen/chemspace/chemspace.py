@@ -244,3 +244,19 @@ class ChemSpace:
             print(f"Succesfully added SMARTS reaction: '{smarts_reaction}'")
         except Exception as error:
             print(f"Error inserting SMARTS filter: '{smarts_reaction}' \n {error}")
+    
+    def add_smarts_reaction_workflow(self,smarts_reactions_id_list):
+        """
+        Will create a workflow to subset a table by SMARTS reactions
+        """
+        try: 
+            db = f"{self.cs_db_path}/chemspace.db"
+            cs_utils.check_smarts_reaction_workflow_existence(db,smarts_reactions_id_list)
+            description = input("Enter a description for the SMARTS reactions workflow: ") 
+            smarts_reactions_list, smarts_descriptions_list = cs_utils.parse_smarts_reactions_id_list(db,smarts_reactions_id_list)
+            cs_utils.store_smarts_reactions_workflow(db,smarts_reactions_list,smarts_reactions_id_list,smarts_descriptions_list,description)
+            print(f"Succesfully created SMARTS reactions workflow with reactions: '{smarts_reactions_id_list}'")
+            
+        except Exception as error:
+            print("An error occurred while trying to create the SMARTS reactions workflow. Please check the inputs and try again.")
+            print(error)

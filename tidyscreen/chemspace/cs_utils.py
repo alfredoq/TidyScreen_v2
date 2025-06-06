@@ -1299,19 +1299,19 @@ def parse_smarts_filters_dict(db_filters,db_workflow,smarts_filters_dict):
     
     return filters_instances_dict, filters_names_list
 
-def check_workflow_existence(db_workflow,filters_instances_dict):
+def check_workflow_existence(db,filters_instances_dict):
     
     """
     Check if the workflow already exists in the database.
     """
-    conn = sqlite3.connect(db_workflow)
+    conn = sqlite3.connect(db)
     cursor = conn.cursor()
     
-    patter_to_check = json.dumps(filters_instances_dict)
+    pattern_to_check = json.dumps(filters_instances_dict)
     
     try: 
         # Check if the JSON string exists in the column 'dict_column' of 'my_table'
-        cursor.execute("SELECT 1 FROM smarts_filters_workflow WHERE filters_instances = ?", (patter_to_check,))
+        cursor.execute("SELECT 1 FROM smarts_filters_workflow WHERE filters_instances = ?", (pattern_to_check,))
         exists = cursor.fetchone() is not None
         
         # Inform and stop if the SMARTS filter exists
@@ -1325,6 +1325,34 @@ def check_workflow_existence(db_workflow,filters_instances_dict):
     except Exception as error: # This caught will be raised if the table does not exist yet
         print("SMARTS workflows table does not exist yet. Creating it...")
         pass # The failure will pass if the table does not exist yet
+
+def check_smarts_reaction_workflow_existence(db,smarts_list):
+    
+    """
+    Check if the workflow already exists in the database.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    pattern_to_check = json.dumps(smarts_list)
+    
+    try: 
+        # Check if the JSON string exists in the column 'dict_column' of 'my_table'
+        cursor.execute("SELECT 1 FROM smarts_reactions_workflow WHERE smarts_ids = ?", (pattern_to_check,))
+        exists = cursor.fetchone() is not None
+        
+        # Inform and stop if the SMARTS filter exists
+        if exists:
+            print(f"The filter: {smarts_list} already exists as a smart reaction workflow. Stopping...")
+            sys.exit()
+    
+    except SystemExit: # This will be raised if the SMARTS filter already exists in the database
+        raise
+    
+    except Exception as error: # This caught will be raised if the table does not exist yet
+        print("SMARTS workflows table does not exist yet. Creating it...")
+        pass # The failure will pass if the table does not exist yet
+
 
 def store_smarts_filters_workflow(db_workflow,filters_instances_dict,filters_names_list,smarts_filters_dict):
     """
@@ -1436,6 +1464,46 @@ def insert_smarts_reaction_in_table(db,smarts_reaction,description):
     
     # Insert the SMARTS filter into the table
     cursor.execute("INSERT INTO smarts_reactions (smarts, description) VALUES (?,?)", (smarts_reaction,description,))
+    
+    conn.commit()
+    conn.close()
+
+
+def parse_smarts_reactions_id_list(db,smarts_reactions_id_list):
+    """
+    Parse the list of SMARTS reactions IDs and return a dictionary with the SMARTS reactions.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Retrieve the SMARTS reactions from the database
+    cursor.execute("SELECT * FROM smarts_reactions")
+    rows = cursor.fetchall()
+    
+    smarts_reactions_list = []
+    smarts_descriptions_list = []
+    
+    for reaction_id in smarts_reactions_id_list:
+        for row in rows:
+            if row[0] == reaction_id:
+                # Append the SMARTS reaction to the list
+                smarts_reactions_list.append(row[1])
+                smarts_descriptions_list.append(row[2])
+    
+    return smarts_reactions_list, smarts_descriptions_list
+
+def store_smarts_reactions_workflow(db,smarts_reactions_list,smarts_reactions_id_list,smarts_descriptions_list,description):
+    """
+    Add a SMARTS reaction workflow to the database.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Create a new table for the SMARTS reactions workflow if it does not exist
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS smarts_reactions_workflow (id INTEGER PRIMARY KEY AUTOINCREMENT, smarts_reactions TEXT, smarts_ids TEXT, smarts_descriptions, description TEXT)")
+    
+    # Insert the SMARTS reactions workflow into the table
+    cursor.execute("INSERT INTO smarts_reactions_workflow (smarts_reactions, smarts_ids, smarts_descriptions, description) VALUES (?,?,?,?)", (json.dumps(smarts_reactions_list),json.dumps(smarts_reactions_id_list),json.dumps(smarts_descriptions_list),description,))
     
     conn.commit()
     conn.close()
