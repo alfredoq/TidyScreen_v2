@@ -230,3 +230,13 @@ class ChemSpace:
         conn.close()
         
         print(f"Successfully copied table '{old_table_name}' to '{new_table_name}'")
+        
+        
+    def add_smarts_reaction(self,smarts_reaction,description=None):
+        try: 
+            db = f"{self.cs_db_path}/chemspace.db"
+            cs_utils.check_smarts_reaction_existence(db,smarts_reaction)
+            cs_utils.insert_smarts_reaction_in_table(db,smarts_reaction,description)
+            print(f"Succesfully added SMARTS reaction: '{smarts_reaction}'")
+        except Exception as error:
+            print(f"Error inserting SMARTS filter: '{smarts_reaction}' \n {error}")

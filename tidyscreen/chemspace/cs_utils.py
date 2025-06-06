@@ -1237,6 +1237,27 @@ def check_smarts_existence(db,smarts_filter):
     except Exception as error: # This caught will be raised if the table does not exist yet
         print("SMARTS filter table does not exist yet. Creating it...")
         pass # The failure will pass if the table does not exist yet
+    
+def check_smarts_reaction_existence(db,smarts_reaction):
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    try: 
+        # Retrieve the SMARTS filter from the database if exists
+        cursor.execute("SELECT 1 FROM smarts_reactions WHERE smarts = ?", (smarts_reaction,))
+        exists = cursor.fetchone() is not None
+        
+        # Inform and stop if the SMARTS filter exists
+        if exists:
+            print(f"The reaction: {smarts_reaction} already exists in the project 'smarts_reactions' table. Stopping...")
+            sys.exit()
+    
+    except SystemExit: # This will be raised if the SMARTS filter already exists in the database
+        raise
+    
+    except Exception as error: # This caught will be raised if the table does not exist yet
+        print("SMARTS reaction table does not exist yet. Creating it...")
+        pass # The failure will pass if the table does not exist yet
 
 def insert_smarts_filter_in_table(db,smarts_filter,description):
     """
@@ -1400,4 +1421,19 @@ def list_available_smarts_filters(db):
     for row in rows:
         print(f"Filter_id: {row[0]}, Filter_Name: {row[1]}, SMARTS: {row[2]}")
     
+def insert_smarts_reaction_in_table(db,smarts_reaction,description):
     
+    """
+    Insert a SMARTS reaction into the database.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Create a new table for the SMARTS filters if it does not exist
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS smarts_reactions (id INTEGER PRIMARY KEY AUTOINCREMENT, smarts TEXT, description TEXT)")
+    
+    # Insert the SMARTS filter into the table
+    cursor.execute("INSERT INTO smarts_reactions (smarts, description) VALUES (?,?)", (smarts_reaction,description,))
+    
+    conn.commit()
+    conn.close()
