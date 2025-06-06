@@ -1348,7 +1348,10 @@ def subset_table_by_smarts_dict(db,table_name,filters_instances_dict):
     df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
     conn.close()    
     
-    for smarts, instances in filters_instances_dict.items():
+    # Sort by values in decreasing order
+    sorted_dict = dict(sorted(filters_instances_dict.items(), key=lambda item: item[1], reverse=True))
+    
+    for smarts, instances in sorted_dict.items():
         # Use pandarallel for parallel processing and count the instances of each SMARTS pattern
         pandarallel.initialize(progress_bar=True)
         df["smarts_instances"] = df['SMILES'].parallel_apply(lambda smiles: check_smiles_vs_smarts(smiles, smarts))
