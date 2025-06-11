@@ -37,7 +37,7 @@ def check_smiles(smiles):
     else:
         print("SMILES column valid...")
 
-def process_input_df(df,db,file):
+def process_input_df(df,db,file,stereo_enum):
     """
     Will rename the columns of the df constructed from a .csv input. If 'name' or 'flag' columns does not exist they will be created.
     """
@@ -61,28 +61,31 @@ def process_input_df(df,db,file):
 
     ### The processing of the SMILES will be done in the following order:
     # Initialize pandarallel to process all steps in parallel
-    pandarallel.initialize(progress_bar=False) 
+    pandarallel.initialize(progress_bar=True) 
     # Sanitization performed in parallel
     print("Sanitizing SMILES")
-    df_sanitized = pd.DataFrame()
-    df_sanitized[["SMILES","name","flag"]] = df.parallel_apply(lambda row: sanitize_smiles_single(row,db,file), axis=1, result_type="expand")
+    df[["SMILES","name","flag"]] = df.parallel_apply(lambda row: sanitize_smiles_single(row,db,file), axis=1, result_type="expand")
     # Drop rows excluded by sanitization
-    df_sanitized = df_sanitized.dropna()
+    df = df.dropna()
     # Enumerate stereoisomers in parallel
-    pandarallel.initialize(progress_bar=False) 
-    print("Enumerating stereoisomers")
-    df_enumerated = pd.DataFrame() # Create the enunmerated dataframe to return values from pandarallel
-    df_enumerated[["SMILES","name","flag","stereo_nbr","stereo_config"]] = df_sanitized.parallel_apply(lambda row: enumerate_stereoisomers_single(row,db,file), axis=1, result_type="expand")
-    # Computation the InChI key for the whole dataframe in parallel
+    pandarallel.initialize(progress_bar=True) 
+    # Enumerate stereoisomers if requested
+    if stereo_enum == 1:
+        print("Enumerating stereoisomers")
+        df = pd.DataFrame() # Create the enumerated dataframe to return values from pandarallel
+        df[["SMILES","name","flag","stereo_nbr","stereo_config"]] = df.parallel_apply(lambda row: enumerate_stereoisomers_single(row,db,file), axis=1, result_type="expand")
+        # Computation the InChI key for the whole dataframe in parallel
+    
+    # Compute the InChIKey for the whole dataframe
     print("Computing InChIKey")
-    pandarallel.initialize(progress_bar=False)
-    df_enumerated["inchi_key"] = df_enumerated.parallel_apply(lambda row: compute_inchi_key_refactored(row,db,file),axis=1)
+    pandarallel.initialize(progress_bar=True)
+    df["inchi_key"] = df.parallel_apply(lambda row: compute_inchi_key_refactored(row,db,file),axis=1)
     # Delete duplicated molecules based on inchi_key
-    df_ready_checked = df_enumerated.drop_duplicates(subset='inchi_key', keep='first')
+    df = df.drop_duplicates(subset='inchi_key', keep='first')
     # Create an 'id' column
-    df_ready_checked = df_ready_checked.reset_index().rename(columns={'index':'id'})
+    df = df.reset_index().rename(columns={'index':'id'})
 
-    return df_ready_checked
+    return df
 
 def sanitize_smiles(df,db,file):
     # Create the output dataframe containing the sanitized SMILES
@@ -572,31 +575,6 @@ def sybyl_mol2_from_pdb(inchi_key,charge,temp_dir):
     output_tar_file = generate_tar_file(output_file)
         
     return output_file, output_tar_file
-
-# def gaff_mol2_from_pdb(inchi_key,charge,temp_dir):
-    
-#     pdb_file = f"{temp_dir}/{inchi_key}.pdb"
-#     output_file = f"{temp_dir}/{inchi_key}_gaff.mol2"
-#     # Since Antechamber creates temporary files for the calculation, and they should not overwrite each other when executing in parallel, create a temporary folder following the molecule InChIKey, 'cd' into it and run the computation.
-#     antechamber_temp_folder = f"{temp_dir}/{inchi_key}"
-#     os.makedirs(antechamber_temp_folder,exist_ok=True) # Create the corresponding temp directory
-#     # Compute the ligand net charge
-#     net_charge = compute_charge_from_pdb(pdb_file)
-#     # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
-#     antechamber_path = shutil.which('antechamber')
-#     try: 
-#         antechamber_command = f'cd {antechamber_temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge} -nc {net_charge} -at gaff -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
-#         subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
-
-#         # Once computation finished, delete the ligand temporary folder
-#         shutil.rmtree(antechamber_temp_folder)        
-            
-#     except Exception as error:
-#         print(error)
-#     # # Compress the output file for storage
-#     output_tar_file = generate_tar_file(output_file)
-        
-#     return output_file, output_tar_file
 
 def compute_frcmod_file(mol2_file,at):
     # Get the prefixes for the file
@@ -1196,20 +1174,18 @@ def compute_properties(row, db, table_name, properties_list):
         print(f"Error updating properties for SMILES: {row['SMILES']}")
         print(error)    
 
-def write_subset_record_to_db(db,table_name,type,prop_filter):
+def write_subset_record_to_db(db,table_name,type,prop_filter,description):
     """
     Write a subset of records to the database based on a property filter.
     """
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
     
-    print(prop_filter)
-    
     # Create a new table for the subset
-    cursor.execute(f"CREATE TABLE IF NOT EXISTS tables_subsets ( id INTEGER PRIMARY KEY AUTOINCREMENT, table_name TEXT, subset_name TEXT, fitering_type TEXT, prop_filter TEXT)")
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS tables_subsets ( id INTEGER PRIMARY KEY AUTOINCREMENT, table_name TEXT, subset_name TEXT, fitering_type TEXT, prop_filter TEXT, description TEXT)")
     
     # Insert records into the subset table - This is the first addition to assign an id
-    cursor.execute(f"INSERT INTO tables_subsets (table_name, subset_name, fitering_type, prop_filter) VALUES (?, ?, ?, ?)",(table_name, f"{table_name}_subset", type, str(prop_filter)))
+    cursor.execute(f"INSERT INTO tables_subsets (table_name, subset_name, fitering_type, prop_filter, description) VALUES (?, ?, ?, ?, ?)",(table_name, f"{table_name}_subset", type, str(prop_filter), description))
     
     current_id = cursor.lastrowid
     
@@ -1261,6 +1237,27 @@ def check_smarts_existence(db,smarts_filter):
     except Exception as error: # This caught will be raised if the table does not exist yet
         print("SMARTS filter table does not exist yet. Creating it...")
         pass # The failure will pass if the table does not exist yet
+    
+def check_smarts_reaction_existence(db,smarts_reaction):
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    try: 
+        # Retrieve the SMARTS filter from the database if exists
+        cursor.execute("SELECT 1 FROM smarts_reactions WHERE smarts = ?", (smarts_reaction,))
+        exists = cursor.fetchone() is not None
+        
+        # Inform and stop if the SMARTS filter exists
+        if exists:
+            print(f"The reaction: {smarts_reaction} already exists in the project 'smarts_reactions' table. Stopping...")
+            sys.exit()
+    
+    except SystemExit: # This will be raised if the SMARTS filter already exists in the database
+        raise
+    
+    except Exception as error: # This caught will be raised if the table does not exist yet
+        print("SMARTS reaction table does not exist yet. Creating it...")
+        pass # The failure will pass if the table does not exist yet
 
 def insert_smarts_filter_in_table(db,smarts_filter,description):
     """
@@ -1302,20 +1299,19 @@ def parse_smarts_filters_dict(db_filters,db_workflow,smarts_filters_dict):
     
     return filters_instances_dict, filters_names_list
 
-
-def check_workflow_existence(db_workflow,filters_instances_dict):
+def check_workflow_existence(db,filters_instances_dict):
     
     """
     Check if the workflow already exists in the database.
     """
-    conn = sqlite3.connect(db_workflow)
+    conn = sqlite3.connect(db)
     cursor = conn.cursor()
     
-    patter_to_check = json.dumps(filters_instances_dict)
+    pattern_to_check = json.dumps(filters_instances_dict)
     
     try: 
         # Check if the JSON string exists in the column 'dict_column' of 'my_table'
-        cursor.execute("SELECT 1 FROM smarts_filters_workflow WHERE filters_instances = ?", (patter_to_check,))
+        cursor.execute("SELECT 1 FROM smarts_filters_workflow WHERE filters_instances = ?", (pattern_to_check,))
         exists = cursor.fetchone() is not None
         
         # Inform and stop if the SMARTS filter exists
@@ -1329,7 +1325,33 @@ def check_workflow_existence(db_workflow,filters_instances_dict):
     except Exception as error: # This caught will be raised if the table does not exist yet
         print("SMARTS workflows table does not exist yet. Creating it...")
         pass # The failure will pass if the table does not exist yet
+
+def check_smarts_reaction_workflow_existence(db,smarts_list):
     
+    """
+    Check if the workflow already exists in the database.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    pattern_to_check = json.dumps(smarts_list)
+    
+    try: 
+        # Check if the JSON string exists in the column 'dict_column' of 'my_table'
+        cursor.execute("SELECT 1 FROM smarts_reactions_workflow WHERE smarts_ids = ?", (pattern_to_check,))
+        exists = cursor.fetchone() is not None
+        
+        # Inform and stop if the SMARTS filter exists
+        if exists:
+            print(f"The filter: {smarts_list} already exists as a smart reaction workflow. Stopping...")
+            sys.exit()
+    
+    except SystemExit: # This will be raised if the SMARTS filter already exists in the database
+        raise
+    
+    except Exception as error: # This caught will be raised if the table does not exist yet
+        print("SMARTS workflows table does not exist yet. Creating it...")
+        pass # The failure will pass if the table does not exist yet
 
 def store_smarts_filters_workflow(db_workflow,filters_instances_dict,filters_names_list,smarts_filters_dict):
     """
@@ -1338,11 +1360,12 @@ def store_smarts_filters_workflow(db_workflow,filters_instances_dict,filters_nam
     conn = sqlite3.connect(db_workflow)
     cursor = conn.cursor()
     
+    description = input("Plovide a description for the SMARTS filters workflow: ")
     # Create a new table for the SMARTS filters workflow if it does not exist
-    cursor.execute(f"CREATE TABLE IF NOT EXISTS smarts_filters_workflow (id INTEGER PRIMARY KEY AUTOINCREMENT, filters_instances TEXT, filters_names TEXT, filters_specification TEXT)")
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS smarts_filters_workflow (id INTEGER PRIMARY KEY AUTOINCREMENT, filters_instances TEXT, filters_names TEXT, filters_specification TEXT, description TEXT)")
     
     # Insert the SMARTS filters workflow into the table
-    cursor.execute("INSERT INTO smarts_filters_workflow (filters_instances, filters_names, filters_specification) VALUES (?,?,?)", ((json.dumps(filters_instances_dict)),str(filters_names_list),(json.dumps(smarts_filters_dict)),))
+    cursor.execute("INSERT INTO smarts_filters_workflow (filters_instances, filters_names, filters_specification, description) VALUES (?,?,?,?)", ((json.dumps(filters_instances_dict)),str(filters_names_list),(json.dumps(smarts_filters_dict)),description,))
     
     conn.commit()
     conn.close()
@@ -1372,18 +1395,24 @@ def subset_table_by_smarts_dict(db,table_name,filters_instances_dict):
     df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
     conn.close()    
     
-    for smarts, instances in filters_instances_dict.items():
-        print("Processing SMARTS pattern: ", smarts)
+    # Sort by values in decreasing order
+    sorted_dict = dict(sorted(filters_instances_dict.items(), key=lambda item: item[1], reverse=True))
+    
+    for smarts, instances in sorted_dict.items():
+        print(f"Filtering by SMARTS: '{smarts}' with '{instances}' instances")
+        
         # Use pandarallel for parallel processing and count the instances of each SMARTS pattern
-        pandarallel.initialize(progress_bar=False)
+        pandarallel.initialize(progress_bar=True)
         df["smarts_instances"] = df['SMILES'].parallel_apply(lambda smiles: check_smiles_vs_smarts(smiles, smarts))
         # Delete rows where the count of instances is different than the specified number
         df = df[df["smarts_instances"] == instances]
         # Delete the instaces column for the next iteration
         df.drop(columns=["smarts_instances"], inplace=True)
     
+    # Reset the index of the DataFrame
+    df.reset_index(drop=True, inplace=True)
+    
     return df
-
 
 def check_smiles_vs_smarts(smiles, smarts):
     """
@@ -1403,4 +1432,76 @@ def check_smiles_vs_smarts(smiles, smarts):
     else:
         return 0
     
+def list_available_smarts_filters(db):
+    """
+    List all available SMARTS filters in the database.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
     
+    cursor.execute("SELECT * FROM chem_filters")
+    rows = cursor.fetchall()
+    
+    if not rows:
+        print("No SMARTS filters found in the database.")
+        return []
+    
+    print("Available SMARTS filters:")
+    for row in rows:
+        print(f"Filter_id: {row[0]}, Filter_Name: {row[1]}, SMARTS: {row[2]}")
+    
+def insert_smarts_reaction_in_table(db,smarts_reaction,description):
+    
+    """
+    Insert a SMARTS reaction into the database.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Create a new table for the SMARTS filters if it does not exist
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS smarts_reactions (id INTEGER PRIMARY KEY AUTOINCREMENT, smarts TEXT, description TEXT)")
+    
+    # Insert the SMARTS filter into the table
+    cursor.execute("INSERT INTO smarts_reactions (smarts, description) VALUES (?,?)", (smarts_reaction,description,))
+    
+    conn.commit()
+    conn.close()
+
+def parse_smarts_reactions_id_list(db,smarts_reactions_id_list):
+    """
+    Parse the list of SMARTS reactions IDs and return a dictionary with the SMARTS reactions.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Retrieve the SMARTS reactions from the database
+    cursor.execute("SELECT * FROM smarts_reactions")
+    rows = cursor.fetchall()
+    
+    smarts_reactions_list = []
+    smarts_descriptions_list = []
+    
+    for reaction_id in smarts_reactions_id_list:
+        for row in rows:
+            if row[0] == reaction_id:
+                # Append the SMARTS reaction to the list
+                smarts_reactions_list.append(row[1])
+                smarts_descriptions_list.append(row[2])
+    
+    return smarts_reactions_list, smarts_descriptions_list
+
+def store_smarts_reactions_workflow(db,smarts_reactions_list,smarts_reactions_id_list,smarts_descriptions_list,description):
+    """
+    Add a SMARTS reaction workflow to the database.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Create a new table for the SMARTS reactions workflow if it does not exist
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS smarts_reactions_workflow (id INTEGER PRIMARY KEY AUTOINCREMENT, smarts_reactions TEXT, smarts_ids TEXT, smarts_descriptions, description TEXT)")
+    
+    # Insert the SMARTS reactions workflow into the table
+    cursor.execute("INSERT INTO smarts_reactions_workflow (smarts_reactions, smarts_ids, smarts_descriptions, description) VALUES (?,?,?,?)", (json.dumps(smarts_reactions_list),json.dumps(smarts_reactions_id_list),json.dumps(smarts_descriptions_list),description,))
+    
+    conn.commit()
+    conn.close()

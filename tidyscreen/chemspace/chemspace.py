@@ -12,7 +12,6 @@ import sqlite3
 # Suppress RDKit warnings and errors
 RDLogger.DisableLog('rdApp.*')
 
-
 class ChemSpace:
     def __init__(self, project):
         self.env_path = '/'.join(tidyscreen.__file__.split('/')[:-1])
@@ -25,17 +24,16 @@ class ChemSpace:
         if not os.path.exists(f"{self.cs_db_path}/chemspace.db"):
             print("Database does not exists.")
 
-    def input_csv(self, file):
+    def input_csv(self, file, stereo_enum=0):
         """
         Will read a .csv file and store it into de corresponding database
         """
         # Read the csv file and check if the first element is a valid SMILES        
         target_table_name, df, first_element = general_functions.csv_reader(file) 
-        print(df.columns)
         # Check if the first element is a valid SMILES - Will stop the process if not
         general_functions.check_smiles(first_element)
         # Make all the processing on the generated df (sanitization, enumeration, inchi key calculation)
-        df = cs_utils.process_input_df(df,self.cs_database_file,file)
+        df = cs_utils.process_input_df(df,self.cs_database_file,file,stereo_enum)
         # Store the final df into de database
         general_functions.save_df_to_db(self.cs_database_file,df,target_table_name)
         
@@ -161,18 +159,18 @@ class ChemSpace:
         pandarallel.initialize(progress_bar=True)
         df.parallel_apply(lambda row: cs_utils.compute_properties(row, db, table_name,properties_list), axis=1)
         
-    def subset_table_by_properties(self,table_name,props_filter):
+    def subset_table_by_properties(self,table_name,props_filter,):
         """
         Will subset the source table by a given property and store the result in the destination table
         """
         db = f"{self.cs_db_path}/chemspace.db"
         try:
-            current_subset = cs_utils.write_subset_record_to_db(db,table_name,"by_props",props_filter)
+            description = input("Enter a description for the subset: ")
+            current_subset = cs_utils.write_subset_record_to_db(db,table_name,"by_props",props_filter,description)
             cs_utils.subset_table_by_properties(db,table_name,current_subset,props_filter)
             print(f"Succesfully subseted table: '{table_name}' by properties: '{props_filter}'")
         except Exception as error:
             print(f"Error subseting table {table_name} by property {props_filter} \n {error}")
-    
     
     def add_smarts_filter(self,smarts_filter,description=None):
         try: 
@@ -182,7 +180,6 @@ class ChemSpace:
             print(f"Succesfully added SMARTS filter: '{smarts_filter}'")
         except Exception as error:
             print(f"Error inserting SMARTS filter: '{smarts_filter}' \n {error}")
-    
     
     def create_smarts_filters_workflow(self,smarts_filters_dict):
         """
@@ -197,15 +194,69 @@ class ChemSpace:
         print(f"Succesfully created SMARTS filters workflow with filters: '{filters_instances_dict}'")
     
     def subset_table_by_smarts_workflow(self,table_name,workflow_id):
-        db = f"{self.cs_db_path}/chemspace.db"
-        # Retrieve the filters instances dict from the database using the workflow_id
-        filters_instances_dict = cs_utils.retrieve_workflow_from_db(db,workflow_id)
-        # Generate the target table name
-        current_subset = cs_utils.write_subset_record_to_db(db,table_name,"by_smarts",filters_instances_dict)
-        # Filter the table by the SMARTS filters
-        filtered_df = cs_utils.subset_table_by_smarts_dict(db,table_name,filters_instances_dict)
-        # Store the final df into de database
-        general_functions.save_df_to_db(db,filtered_df,current_subset)
-        # Inform the user
-        print(f"Succesfully subseted table: '{table_name}' by SMARTS filters workflow with ID: '{workflow_id}'")
+        try:
+            db = f"{self.cs_db_path}/chemspace.db"
+            # Retrieve the filters instances dict from the database using the workflow_id
+            filters_instances_dict = cs_utils.retrieve_workflow_from_db(db,workflow_id)
+            # Generate the target table name
+            description = input("Enter a description for the subset: ")
+            current_subset = cs_utils.write_subset_record_to_db(db,table_name,"by_smarts",filters_instances_dict,description)
+            # Filter the table by the SMARTS filters
+            filtered_df = cs_utils.subset_table_by_smarts_dict(db,table_name,filters_instances_dict)
+            # Store the final df into de database
+            general_functions.save_df_to_db(db,filtered_df,current_subset)
+            # Inform the user
+            print(f"Succesfully subseted table: '{table_name}' by SMARTS filters workflow with ID: '{workflow_id}'")
+        except:
+            print("An error occurred while trying to subset the table by SMARTS filters workflow. Please check the inputs and try again.")
+    
+    def list_available_smarts_filters(self):
+        """
+        Will list all available SMARTS filters in the project
+        """
+        db = self.projects_db
+        cs_utils.list_available_smarts_filters(db)
         
+    def copy_table_to_new_name(self, old_table_name, new_table_name):
+        """
+        Copy the content of an existing table to a new table with a different name.
+        """
+        db = f"{self.cs_db_path}/chemspace.db"
+        conn = sqlite3.connect(db)
+        cursor = conn.cursor()
+        
+        # Create the new table with the same structure as the old table
+        cursor.execute(f"CREATE TABLE IF NOT EXISTS {new_table_name} AS SELECT * FROM {old_table_name} WHERE 1=0")
+        
+        # Copy the content from the old table to the new table
+        cursor.execute(f"INSERT INTO {new_table_name} SELECT * FROM {old_table_name}")
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"Successfully copied table '{old_table_name}' to '{new_table_name}'")
+        
+    def add_smarts_reaction(self,smarts_reaction,description=None):
+        try: 
+            db = f"{self.cs_db_path}/chemspace.db"
+            cs_utils.check_smarts_reaction_existence(db,smarts_reaction)
+            cs_utils.insert_smarts_reaction_in_table(db,smarts_reaction,description)
+            print(f"Succesfully added SMARTS reaction: '{smarts_reaction}'")
+        except Exception as error:
+            print(f"Error inserting SMARTS filter: '{smarts_reaction}' \n {error}")
+    
+    def add_smarts_reaction_workflow(self,smarts_reactions_id_list):
+        """
+        Will create a workflow to subset a table by SMARTS reactions
+        """
+        try: 
+            db = f"{self.cs_db_path}/chemspace.db"
+            cs_utils.check_smarts_reaction_workflow_existence(db,smarts_reactions_id_list)
+            description = input("Enter a description for the SMARTS reactions workflow: ") 
+            smarts_reactions_list, smarts_descriptions_list = cs_utils.parse_smarts_reactions_id_list(db,smarts_reactions_id_list)
+            cs_utils.store_smarts_reactions_workflow(db,smarts_reactions_list,smarts_reactions_id_list,smarts_descriptions_list,description)
+            print(f"Succesfully created SMARTS reactions workflow with reactions: '{smarts_reactions_id_list}'")
+            
+        except Exception as error:
+            print("An error occurred while trying to create the SMARTS reactions workflow. Please check the inputs and try again.")
+            print(error)
