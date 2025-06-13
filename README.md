@@ -49,4 +49,4 @@ $ pip install git+https://github.com/forlilab/Meeko@develop
 
 ---
 
-In order to use TidyScreen, users can access the [documentation](https://alfredoq.github.io/TidyScreen_v2_docs/) describing the project and specific working examples.
+In order to use TidyScreen, users can access the [documentation](https://alfredoq.github.io/TidyScreen_v2_docs_new/) describing the project and specific working examples.
