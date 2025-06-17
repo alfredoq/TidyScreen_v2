@@ -57,7 +57,7 @@ class ChemSpace:
         
         print(f"Successfully depicted ligands in table: '{output_path}'")
 
-    def generate_mols_in_table(self,table_name,charge="bcc-ml",pdb=1,mol2=1,pdbqt=1,conf_rank=0):
+    def generate_mols_in_table(self,table_name,charge="bcc-ml",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10):
         """
         Will process all SMILES present in a given table an generate molecules stored in different formats
         """
@@ -80,7 +80,7 @@ class ChemSpace:
             print("Computing .pdb files for ligands")
             # Compute and store the .pdb files using pandarallel
             pandarallel.initialize(progress_bar=True) # Activate Progress Bar
-            df.parallel_apply(lambda row: cs_utils.compute_and_store_pdb(row,db,table_name,temp_dir,conf_rank), axis=1)
+            df.parallel_apply(lambda row: cs_utils.compute_and_store_pdb(row,db,table_name,temp_dir,conf_rank,timeout), axis=1)
             # Delete all rows in the target table in which .mol2 computation may have failed (errors were registered accondingly)
             general_functions.delete_nulls_table(db,table_name,"pdb_file")
         if mol2 == 1:

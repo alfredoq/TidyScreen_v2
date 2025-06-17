@@ -927,10 +927,10 @@ def create_mols_columns(conn, table_name,list_mol_objects_colnames,list_mol_obje
         sys.exit()
     pass
 
-def compute_and_store_pdb(row,db,table_name,temp_dir,conf_rank):
+def compute_and_store_pdb(row,db,table_name,temp_dir,conf_rank,timeout):
     # Prepare and store the corresponding .pdb file
     try:
-        pdb_file, tar_pdb_file, net_charge = general_functions.timeout_function(pdb_from_smiles,(row["SMILES"],temp_dir,conf_rank),timeout=10,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdb_from_smiles' computation"])
+        pdb_file, tar_pdb_file, net_charge = general_functions.timeout_function(pdb_from_smiles,(row["SMILES"],temp_dir,conf_rank),timeout=timeout,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdb_from_smiles' computation"])
         store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
     except Exception as error:
         fail_message = f"Failed at .pdb molecule computation step - Mol id: {row['id']} - deleted from {table_name}"
