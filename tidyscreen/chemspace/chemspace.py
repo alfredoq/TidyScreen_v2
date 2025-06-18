@@ -57,7 +57,7 @@ class ChemSpace:
         
         print(f"Successfully depicted ligands in table: '{output_path}'")
 
-    def generate_mols_in_table(self,table_name,charge="bcc-ml",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10):
+    def generate_mols_in_table(self,table_name,charge="bcc-ml",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10,delete_temp_dir=1):
         """
         Will process all SMILES present in a given table an generate molecules stored in different formats
         """
@@ -99,8 +99,9 @@ class ChemSpace:
             # Purge the rows in which the .pdbqt computation may have failed
             general_functions.delete_nulls_table(db,table_name,"mol2_file_sybyl")
         
-        # Delete the temp directory
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        if delete_temp_dir == 1:
+            # Delete the temp directory
+            shutil.rmtree(temp_dir, ignore_errors=True)
         
     def retrieve_mols_in_table(self,table_name,outpath=None,ligname=None,pdb=1,mol2_sybyl=1,mol2_gaff2=1,frcmod=1,pdbqt=1,inform=1):
         database_folder = self.project.proj_folders_path["chemspace"]["processed_data"]
