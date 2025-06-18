@@ -57,6 +57,9 @@ class MolDyn:
             # Execute tLeap initialization
             moldyn_utils.run_tleap_input(assay_folder,input_file='tleap.in')
         
+            # Inform successful creation of the MD assay
+            print(f"MD assay {assay_id} created successfully in {assay_folder}")
+        
         except Exception as error:
             print("Error creating MD assays. Stopping...")
             print(error)
