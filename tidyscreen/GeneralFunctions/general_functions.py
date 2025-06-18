@@ -12,6 +12,7 @@ from rdkit import Chem
 import concurrent.futures
 import moldf
 import copy
+import shutil
 
 def renumber_pdb_file_using_crystal(crystal_file,target_file,renumbered_file,resname_field=3,resnumber_field=5):
     crystal_dict = get_pdb_sequence_dict(crystal_file,resname_field=3,resnumber_field=5)
@@ -323,20 +324,28 @@ def sybyl_to_gaff_mol2(input_mol2, output_mol2, sybyl_to_gaff_dict):
             
 def sybyl_to_gaff_mol2_moldf(sybyl_file,gaff_file,atoms_dict):
     
-    # Read the mol2 file and make a copy for the gaff version
-    mol_sybyl = moldf.read_mol2(sybyl_file)
-    mol_gaff = copy.deepcopy(mol_sybyl)
-    
-    # Update atom types
-    for idx, row in mol_sybyl['ATOM'].iterrows():
-        sybyl_atom = row['atom_type']
-        gaff_type = atoms_dict.get(sybyl_atom, sybyl_atom)
-        mol_gaff['ATOM'].at[idx,'atom_type'] = gaff_type
+    try: 
+        # Read the mol2 file and make a copy for the gaff version
+        mol_sybyl = moldf.read_mol2(sybyl_file)
+        mol_gaff = copy.deepcopy(mol_sybyl)
         
-    # Write the modified mol2 file
-    moldf.write_mol2(mol_gaff,gaff_file)
+        # Update atom types
+        for idx, row in mol_sybyl['ATOM'].iterrows():
+            sybyl_atom = row['atom_type']
+            gaff_type = atoms_dict.get(sybyl_atom, sybyl_atom)
+            mol_gaff['ATOM'].at[idx,'atom_type'] = gaff_type
+            
+        # Write the modified mol2 file
+        moldf.write_mol2(mol_gaff,gaff_file)
 
-    return gaff_file
+        # Clean the mol2 file to ensure it has the complete structure
+        cleaned_gaff_file = clean_replaced_mol2_file(sybyl_file,gaff_file)
+
+        return cleaned_gaff_file
+    
+    except Exception as error:
+        print(f"Error processing sybyl to gaff mol2: {error}")
+        return None
 
 def delete_smiles_row_from_table(smiles,db,table_name):
     conn = sqlite3.connect('your_database.db')
@@ -350,15 +359,47 @@ def delete_smiles_row_from_table(smiles,db,table_name):
 
 def replace_charge_on_mol2_file(mol2_file,charge_array):
     # Read the .mol2 file
+    mol2_processed = mol2_file.replace(".mol2", "_processed.mol2")
     mol = moldf.read_mol2(mol2_file)
     try:
         for idx, row in mol['ATOM'].iterrows():
             mol['ATOM'].loc[idx,['charge']] = charge_array[idx]
             
         # Replace the original file with the new one containing replaced charges
-        moldf.write_mol2(mol, mol2_file)
-    
+        moldf.write_mol2(mol, mol2_processed)
+
+        # Clean the mol2 file to ensure it has the complete structure
+        cleaned_file = clean_replaced_mol2_file(mol2_file,mol2_processed)
+
+        # Copy the cleaned mol2 file to the original location
+        shutil.copyfile(cleaned_file, mol2_file)
+
         return mol2_file
     
     except Exception as error:
         print(Exception)
+
+def clean_replaced_mol2_file(input_file,output_file):
+    """
+    This function will repair the mol2 file written by moldf, since by default moldf will not write the last section of the file start from @<TRIPOS>SUBSTRUCTURE.
+    """
+    target_string = "@<TRIPOS>SUBSTRUCTURE"
+
+    # Read lines from the first file
+    with open(input_file, "r") as f:
+        lines = f.readlines()
+
+    # Find the index where the start_string appears
+    for idx, line in enumerate(lines):
+        if target_string in line:
+            start_idx = idx
+            break
+    else:
+        start_idx = None  # String not found
+
+    # If found, append lines to the second file
+    if start_idx is not None:
+        with open(output_file, "a") as f:
+            f.writelines(lines[start_idx:])
+
+    return output_file

@@ -57,11 +57,17 @@ def check_existing_rec_model(db,folder):
         conn.close()
     
         if exists == 1:
-            print(f"The receptor model: '{model_to_check}' already exists. Stopping.")
-            sys.exit()
+            #print(f"The receptor model: '{model_to_check}' already exists. Stopping.")
+            option = input(f"The receptor model: '{model_to_check}' already exists. Continue? (y/n): ")
+            if option == 'y':
+                print("Continuing...")
+            else:
+                sys.exit()
             
     except: # This 'pass' allows the procesing for the first receptor, sinthe the check will fail.
-        pass
+        #pass
+        print("Stopping...")
+        sys.exit()
 
 def check_default_docking_conditions(docking_params_db):
     

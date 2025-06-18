@@ -28,7 +28,7 @@ class MolDyn:
             ## Retrieve the .dlg to extract the selected binding pose
             md_folder = self.mdyn_path
             docking_folder = f"{self.docking_assays_path}/assay_{docking_assay_id}"
-            ligname, dlg_file, run_number = docking_analysis_utils.retrieve_dlg_file(docking_folder,docking_assay_id,docking_pose_id)
+            ligname, sub_pose, dlg_file, run_number = docking_analysis_utils.retrieve_dlg_file(docking_folder,docking_assay_id,docking_pose_id)
             
             # Extract the .pdb file by parsing the 'run_number' in the 'dlg_file'
             pose_pdb_file = docking_analysis_utils.parse_dlg_by_run_number(ligname,dlg_file,run_number,assay_folder)
