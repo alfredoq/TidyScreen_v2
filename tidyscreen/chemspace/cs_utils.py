@@ -576,6 +576,36 @@ def sybyl_mol2_from_pdb(inchi_key,charge,temp_dir):
         
     return output_file, output_tar_file
 
+
+def gaff_mol2_from_pdb(inchi_key,charge,temp_dir):
+    
+    pdb_file = f"{temp_dir}/{inchi_key}.pdb"
+    output_file = f"{temp_dir}/{inchi_key}_gaff.mol2"
+    # Since Antechamber creates temporary files for the calculation, and they should not overwrite each other when executing in parallel, create a temporary folder following the molecule InChIKey, 'cd' into it and run the computation.
+    antechamber_temp_folder = f"{temp_dir}/{inchi_key}"
+    os.makedirs(antechamber_temp_folder,exist_ok=True) # Create the corresponding temp directory
+    # Compute the ligand net charge
+    net_charge = compute_charge_from_pdb(pdb_file)
+    # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
+    antechamber_path = shutil.which('antechamber')
+    try: 
+        antechamber_command = f'cd {antechamber_temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge} -nc {net_charge} -at gaff -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
+        
+        subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
+
+        # Once computation finished, delete the ligand temporary folder
+        shutil.rmtree(antechamber_temp_folder)        
+            
+    except Exception as error:
+        print(error)
+    
+    
+    # # Compress the output file for storage
+    output_tar_file = generate_tar_file(output_file)
+        
+    return output_file, output_tar_file
+
+
 def compute_frcmod_file(mol2_file,at):
     # Get the prefixes for the file
     file_prefix = mol2_file.split('/')[-1].replace(f"_{at}.mol2","")
@@ -966,34 +996,41 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
     try: 
         if charge != "bcc-ml":
             # Compute and store in the db the sybyl type mol2
-            mol2_output_file, output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],charge,temp_dir)
+            sybyl_mol2_output_file, sybyl_output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],charge,temp_dir)
             # Store the Sybyl like file
-            store_file_as_blob(db,table_name,'mol2_file_sybyl',output_tar_file,row)
-            # Rename the mol2 file from sybyl to gaff using a precomputed dictionary
-            mol2_gaff_file, output_tar_file = rename_sybyl_to_gaff_mol2(row,db,table_name,temp_dir,atom_types_dict)
-            # Store the renamed mol2 file as gaff type
-            store_file_as_blob(db,table_name,'mol2_file_gaff',output_tar_file,row)
+            store_file_as_blob(db,table_name,'mol2_file_sybyl',sybyl_output_tar_file,row)
+            
+            # Compute and store in the db the gaff type mol2
+            gaff_mol2_output_file, gaff_output_tar_file = gaff_mol2_from_pdb(row["inchi_key"],charge,temp_dir)
+            # Store the GAFF like file
+            store_file_as_blob(db,table_name,'mol2_file_gaff',gaff_output_tar_file,row)
             # Compute the frcmod file
-            output_tar_frcmod = compute_frcmod_file(mol2_gaff_file,at="gaff")
+            output_tar_frcmod = compute_frcmod_file(gaff_mol2_output_file,at="gaff")
             # Store the frcmod file
             store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
             # Store the charge model used
             store_string_in_column(db,table_name,"charge_model",charge,row)
         
         elif charge == "bcc-ml":
+            # Compute the bbc-ml charges using the precomputed bbc-ml model
             charge_array = compute_bbc_ml_array(row["SMILES"],row["inchi_key"],temp_dir)
-            mol2_output_file, output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],"gas",temp_dir) # Compute the charge using a fake 'gas' model to be replaced
+            # Compute the charge using a fake 'gas' model to be replaced computing SYBYL atom types
+            sybyl_mol2_output_file, sybyl_output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],"gas",temp_dir)
             # Replace the charges on the .mol2 files using the precomputed bbc-ml charges
-            replaced_mol2_file = general_functions.replace_charge_on_mol2_file(mol2_output_file,charge_array)
-            new_tar_file = generate_tar_file(replaced_mol2_file)
+            sybyl_replaced_mol2_file = general_functions.replace_charge_on_mol2_file(sybyl_mol2_output_file,charge_array)
+            sybyl_new_tar_file = generate_tar_file(sybyl_replaced_mol2_file)
             # Store the Sybyl like file
-            store_file_as_blob(db,table_name,'mol2_file_sybyl',new_tar_file,row)
-            # Rename the mol2 file from sybyl to gaff using a precomputed dictionary
-            mol2_gaff_file, output_tar_file = rename_sybyl_to_gaff_mol2(row,db,table_name,temp_dir,atom_types_dict)
-            # Store the renamed mol2 file as gaff type
-            store_file_as_blob(db,table_name,'mol2_file_gaff',output_tar_file,row)
+            store_file_as_blob(db,table_name,'mol2_file_sybyl',sybyl_new_tar_file,row)
+        
+            # Compute the charge using a fake 'gas' model to be replaced computing GAFF atom types
+            gaff_mol2_output_file, gaff_output_tar_file = gaff_mol2_from_pdb(row["inchi_key"],"gas",temp_dir)                          
+            # Replace the charges on the .mol2 files using the precomputed bbc-ml charges
+            gaff_replaced_mol2_file = general_functions.replace_charge_on_mol2_file(gaff_mol2_output_file,charge_array)
+            gaff_new_tar_file = generate_tar_file(gaff_replaced_mol2_file)
+            # Store the GAFF like file
+            store_file_as_blob(db,table_name,'mol2_file_gaff',gaff_new_tar_file,row)
             # Compute the frcmod file
-            output_tar_frcmod = compute_frcmod_file(mol2_gaff_file,at="gaff")
+            output_tar_frcmod = compute_frcmod_file(gaff_replaced_mol2_file,at="gaff")
             # Store the frcmod file
             store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
             # Store the charge model used
