@@ -317,6 +317,7 @@ def compute_fingerprints(assay_folder,complex_pdb_file,receptor_filename,solvent
         # perform the MMPBSA analysis
         assay_folder, decomp_file = md_utils.compute_MMPBSA(assay_folder,"min1.crd")
         
+        print(f"Decomp file: {decomp_file}")
         # renumber the output of MMGBSA according to the original receptor.
         decomp_csv_file,decomp_csv_file_renum = md_utils.renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename)
 

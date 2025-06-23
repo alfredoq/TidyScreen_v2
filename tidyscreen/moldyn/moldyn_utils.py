@@ -359,19 +359,35 @@ def apply_ante_MMPBSA(assay_folder):
     subprocess.run(command, shell=True, capture_output=True, text=True)
 
 def compute_MMPBSA(assay_folder,traj_input):
-    MMPBSA_path = shutil.which('MMPBSA.py')
     
-    # Run ante_MMPBSA computation
-    command = f'{MMPBSA_path} -i {assay_folder}/mmgbsa.in -o {assay_folder}/mmgbsa.out -do {assay_folder}/mmgbsa_DECOMP.out -cp {assay_folder}/complex_MMGBSA.prmtop -rp {assay_folder}/receptor_MMGBSA.prmtop -lp {assay_folder}/ligand_MMGBSA.prmtop -y {assay_folder}/{traj_input}'
-    print(f"Computing MMPBSA")
-    subprocess.run(command, shell=True, capture_output=True, text=True)
     
-    # Clean the temporal files
-    command = f'{MMPBSA_path} -i {assay_folder}/mmgbsa.in -o {assay_folder}/mmgbsa.out -do {assay_folder}/mmgbsa_DECOMP.out -cp {assay_folder}/complex_MMGBSA.prmtop -rp {assay_folder}/receptor_MMGBSA.prmtop -lp {assay_folder}/ligand_MMGBSA.prmtop -y {assay_folder}/{traj_input} --clean'
+    # Check if the MMPBSA.py script is available in the conda environment, if so delete it so as to use the system one
+    conda_prefix = os.environ.get('CONDA_PREFIX')
+    # Path to the file in the bin directory (replace 'my_executable' with your filename)
+    file_path = os.path.join(conda_prefix, 'bin', 'MMPBSA.py')
+    if os.path.isfile(file_path):
+        os.remove(file_path)
+        print(f"Removed MMPBSA.py from conda environment. Using system version instead.")
     
-    subprocess.run(command, shell=True, capture_output=True, text=True)
+    try: 
+        # Get the MMPBSA.py path
+        MMPBSA_path = shutil.which('MMPBSA.py')
+        # Run ante_MMPBSA computation
+        command = f'{MMPBSA_path} -i {assay_folder}/mmgbsa.in -o {assay_folder}/mmgbsa.out -do {assay_folder}/mmgbsa_DECOMP.out -cp {assay_folder}/complex_MMGBSA.prmtop -rp {assay_folder}/receptor_MMGBSA.prmtop -lp {assay_folder}/ligand_MMGBSA.prmtop -y {assay_folder}/{traj_input}'
+        print(f"Computing MMPBSA")
+        subprocess.run(command, shell=True, capture_output=True, text=True)
+        
+        # Clean the temporal files
+        command = f'{MMPBSA_path} -i {assay_folder}/mmgbsa.in -o {assay_folder}/mmgbsa.out -do {assay_folder}/mmgbsa_DECOMP.out -cp {assay_folder}/complex_MMGBSA.prmtop -rp {assay_folder}/receptor_MMGBSA.prmtop -lp {assay_folder}/ligand_MMGBSA.prmtop -y {assay_folder}/{traj_input} --clean'
+        
+        subprocess.run(command, shell=True, capture_output=True, text=True)
+        
+        return assay_folder, f"{assay_folder}/mmgbsa_DECOMP.out"
     
-    return assay_folder, f"{assay_folder}/mmgbsa_DECOMP.out"
+    except Exception as error:
+        print(f"Error during MMPBSA computation: {error}")
+        return None, None
+    
     
 def clean_MMPBSA_files(target_dir):
     patterns_to_retain = ['renum.csv','_pose_']
