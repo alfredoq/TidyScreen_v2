@@ -22,6 +22,7 @@ class MolDock:
         # Will check if the receptor model is already stored by analyzing the folder name 
         ### Function
         moldock_utils.check_existing_rec_model(db,folder)
+        print("LLEGO")
         # Will generate a .tar file containing all the receptor information
         tar_filename, receptor_blob = moldock_utils.tar_folder(folder,file_prefix)
         # Store the receptor model in the corresponding 'receptors' db
