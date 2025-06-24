@@ -44,7 +44,6 @@ def store_receptor_model(db,tar_filename, receptor_blob):
     
     print("Succesfully stored receptor model")
     
-    
 def check_existing_rec_model(db,folder):
     model_to_check = folder.split('/')[-1].replace('-','_') + '.tar'
     conn = tidyscreen.connect_to_db(db)
@@ -61,13 +60,15 @@ def check_existing_rec_model(db,folder):
             option = input(f"The receptor model: '{model_to_check}' already exists. Continue? (y/n): ")
             if option == 'y':
                 print("Continuing...")
-            else:
-                sys.exit()
-            
-    except: # This 'pass' allows the procesing for the first receptor, sinthe the check will fail.
-        #pass
+            else: # Will raise a valueError to stop the process
+                raise ValueError
+
+    except ValueError:
         print("Stopping...")
-        sys.exit()
+        sys.exit()    
+    
+    except Exception as error: # This 'pass' allows the processing for the first receptor, since the first check will due to the table 'receptors' not existing.
+        pass
 
 def check_default_docking_conditions(docking_params_db):
     
@@ -90,7 +91,6 @@ def check_default_docking_conditions(docking_params_db):
     
     except:
         return 0 # Will return 0 if the database does not exist
-    
 
 def create_default_params_register(docking_params_db):
     

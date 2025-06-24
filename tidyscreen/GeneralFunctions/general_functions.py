@@ -20,7 +20,7 @@ def renumber_pdb_file_using_crystal(crystal_file,target_file,renumbered_file,res
     combined_dict = combine_dictionaries(amber_dict,crystal_dict)
     renumber_pdb_file(target_file,renumbered_file,combined_dict,resname_field=3,resnumber_field=4)
     
-def get_pdb_sequence_dict(pdb_file,resname_field,resnumber_field):
+def get_pdb_sequence_dict(pdb_file,resname_field,resnumber_field,chain_name_field):
     """
     This function will create a dictionary from parsing the crystallographic .pdb file, returning:
 
@@ -33,11 +33,16 @@ def get_pdb_sequence_dict(pdb_file,resname_field,resnumber_field):
         for line in file:
             line_split = line.rsplit()
             if len(line_split) > 5 and line_split[0] == 'ATOM':
-                residue_value = f"{line_split[resname_field]}_{line_split[resnumber_field]}"
+                # Construct the residue name, and if no chain name field exists, use X as a placeholder
+                if chain_name_field == -1:
+                    residue_value = f"{line_split[resname_field]}_X_{line_split[resnumber_field]}"
+                else:
+                    residue_value = f"{line_split[resname_field]}_{line_split[chain_name_field]}_{line_split[resnumber_field]}"
+                
+                # Check if the residue_value is already in the dictionary and if not, add it
                 if residue_value not in sequence_dict.values():
                     sequence_dict[residue] = residue_value
                     residue += 1
-    
     file.close()
     
     return sequence_dict
