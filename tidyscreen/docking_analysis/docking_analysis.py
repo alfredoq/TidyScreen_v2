@@ -55,6 +55,7 @@ class DockingAnalysis:
         
         # Map the fingerprint df to the crystallographic numbering
         df_mapped_to_cristal = general_functions.map_prolif_fingerprints_df_to_crystal_sequence(figerprints_df,tleap_vs_cristal_reference_dict)
+        
         # Append the mapped row to the reference the whole protein interactions dataframe
         merged_df = general_functions.merge_calculated_and_reference_fingerprints_df(df_mapped_to_cristal,all_residues_plf_df)
         # Save the interactions df to the corresponding assay folder

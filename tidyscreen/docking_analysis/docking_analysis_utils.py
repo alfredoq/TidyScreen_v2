@@ -317,14 +317,12 @@ def compute_fingerprints(output_path,main_fingerprints_folder,complex_pdb_file,r
         # perform the MMPBSA analysis
         output_path, decomp_file = md_utils.compute_MMPBSA(output_path,"min1.crd")
         
-        print(f"Iteration: {iteration}")
-        
         # renumber the output of MMGBSA according to the original receptor.
         decomp_csv_file,decomp_csv_file_renum = md_utils.renumber_mmgbsa_output(output_path,main_fingerprints_folder,decomp_file,receptor_filename,iteration)
 
         # Create a dictionary of resname/resnumber tleap vs. crystal
         tleap_vs_cristal_reference_dict = generate_tleap_vs_cristal_reference_dict(decomp_csv_file,decomp_csv_file_renum)
-
+        
         # Return prmtop and minimized file
         return f'{output_path}/complex_MMGBSA.prmtop', f'{output_path}/min1.crd', tleap_vs_cristal_reference_dict, decomp_csv_file_renum
     
@@ -340,7 +338,7 @@ def generate_tleap_vs_cristal_reference_dict(decomp_file,decomp_file_renum):
         
         # Create the dictionary by zipping both readers together
         tleap_vs_cristal_reference_dict = {
-            f"{row1[0]}{row1[1]}": f"{row2[0]}{row2[1]}"
+            f"{row1[0]}{row1[2]}_{row1[1]}": f"{row2[0]}{row2[2]}_{row2[1]}"
             for row1, row2 in zip(reader1, reader2)
         }
 
