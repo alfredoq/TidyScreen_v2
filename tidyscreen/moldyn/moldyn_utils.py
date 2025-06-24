@@ -8,60 +8,61 @@ from tidyscreen.GeneralFunctions import general_functions as general_functions
 import sys
 import pandas as pd
 from tidyscreen import tidyscreen
+import json
 
 
-def prepare_md_initial_files(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm,solvent,min_steps,dynamics=1):
+def prepare_md_initial_files(output_path,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm,solvent,min_steps,dynamics=1):
     ## Prepare the corresponding 'tleap' input file
     # These preparations is common for fingerprints and MD assays
     
     if solvent == "explicit":
-        prepare_tleap_input(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm)
-        prepare_min1_input(assay_folder,min_steps)
-        prepare_min2_input(assay_folder,min_steps)
+        prepare_tleap_input(output_path,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm)
+        prepare_min1_input(output_path,min_steps)
+        prepare_min2_input(output_path,min_steps)
     
     if solvent == "implicit":
-        prepare_tleap_input_implicit_solvent(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm)
-        prepare_min1_input_implicit_solvent(assay_folder,min_steps)
+        prepare_tleap_input_implicit_solvent(output_path,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm)
+        prepare_min1_input_implicit_solvent(output_path,min_steps)
 
     if dynamics == 1: # This will only be executed for simulations involving MD preparations
-        prepare_heat1_input(assay_folder)
-        prepare_heat2_input(assay_folder)
-        prepare_equil_input(assay_folder)
-        prepare_prod_input(assay_folder)
-        prepare_md_execution_script(assay_folder)
+        prepare_heat1_input(output_path)
+        prepare_heat2_input(output_path)
+        prepare_equil_input(output_path)
+        prepare_prod_input(output_path)
+        prepare_md_execution_script(output_path)
     
-def prepare_tleap_input(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm):
-    with open(f"{assay_folder}/tleap.in","w") as tleap_input:
+def prepare_tleap_input(output_path,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm):
+    with open(f"{output_path}/tleap.in","w") as tleap_input:
         tleap_input.write("source leaprc.protein.ff14SB \n")
         tleap_input.write("source leaprc.gaff \n")
         tleap_input.write("source leaprc.water.tip3p \n")
-        tleap_input.write(f"UNL = loadmol2 {assay_folder}/{mol2_lig_parm} \n")
-        tleap_input.write(f"loadamberparams {assay_folder}/{frcmod_lig_parm} \n")
+        tleap_input.write(f"UNL = loadmol2 {output_path}/{mol2_lig_parm} \n")
+        tleap_input.write(f"loadamberparams {output_path}/{frcmod_lig_parm} \n")
         tleap_input.write(f"COM = loadpdb {complex_pdb_file} \n")
         tleap_input.write(f"addions COM Na+ 0 \n")
         tleap_input.write(f"addions COM Cl- 0 \n")
         tleap_input.write("solvateoct COM TIP3PBOX 10.0 \n")
-        tleap_input.write(f"saveamberparm COM {assay_folder}/complex.prmtop {assay_folder}/complex.inpcrd \n")
+        tleap_input.write(f"saveamberparm COM {output_path}/complex.prmtop {output_path}/complex.inpcrd \n")
         tleap_input.write("quit")
     
     tleap_input.close()
 
-def prepare_tleap_input_implicit_solvent(assay_folder,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm):
+def prepare_tleap_input_implicit_solvent(output_path,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm):
 
-    with open(f"{assay_folder}/tleap.in","w") as tleap_input:
+    with open(f"{output_path}/tleap.in","w") as tleap_input:
         tleap_input.write("source leaprc.protein.ff14SB \n")
         tleap_input.write("source leaprc.gaff \n")
         tleap_input.write("set default PBRadii bondi \n")
-        tleap_input.write(f"UNL = loadmol2 {assay_folder}/{mol2_lig_parm} \n")
-        tleap_input.write(f"loadamberparams {assay_folder}/{frcmod_lig_parm} \n")
+        tleap_input.write(f"UNL = loadmol2 {output_path}/{mol2_lig_parm} \n")
+        tleap_input.write(f"loadamberparams {output_path}/{frcmod_lig_parm} \n")
         tleap_input.write(f"COM = loadpdb {complex_pdb_file} \n")
-        tleap_input.write(f"saveamberparm COM {assay_folder}/complex.prmtop {assay_folder}/complex.inpcrd \n")
+        tleap_input.write(f"saveamberparm COM {output_path}/complex.prmtop {output_path}/complex.inpcrd \n")
         tleap_input.write("quit")
     
     tleap_input.close()
 
-def prepare_min1_input(assay_folder,min_steps):
-    with open(f"{assay_folder}/min1.in","w") as min1_input:    
+def prepare_min1_input(output_path,min_steps):
+    with open(f"{output_path}/min1.in","w") as min1_input:    
         min1_input.write("Initial minimization of water molecules\n")
         min1_input.write("&cntrl\n")
         min1_input.write("imin = 1,\n")
@@ -78,9 +79,9 @@ def prepare_min1_input(assay_folder,min_steps):
     
     min1_input.close()
 
-def prepare_min1_input_implicit_solvent(assay_folder,min_steps):
+def prepare_min1_input_implicit_solvent(output_path,min_steps):
 
-    with open(f"{assay_folder}/min1.in","w") as min1_input:    
+    with open(f"{output_path}/min1.in","w") as min1_input:    
         min1_input.write("Initial minimization of water molecules\n")
         min1_input.write("&cntrl\n")
         min1_input.write("imin = 1,\n")
@@ -100,8 +101,8 @@ def prepare_min1_input_implicit_solvent(assay_folder,min_steps):
     
     min1_input.close()
 
-def prepare_min2_input(assay_folder,min_steps):
-    with open(f"{assay_folder}/min2.in","w") as min2_input:
+def prepare_min2_input(output_path,min_steps):
+    with open(f"{output_path}/min2.in","w") as min2_input:
         min2_input.write("Initial minimization of water molecules\n")
         min2_input.write("&cntrl\n")
         min2_input.write("imin = 1,\n")
@@ -116,9 +117,9 @@ def prepare_min2_input(assay_folder,min_steps):
     
     min2_input.close()
 
-def prepare_heat1_input(assay_folder):
+def prepare_heat1_input(output_path):
     
-    with open(f"{assay_folder}/heat1.in","w") as heat1_input:
+    with open(f"{output_path}/heat1.in","w") as heat1_input:
         heat1_input.write(f"First heating stage of the solvent, with restraints in the solute\n")
         heat1_input.write("&cntrl\n")
         heat1_input.write("imin = 0,\n")
@@ -156,9 +157,9 @@ def prepare_heat1_input(assay_folder):
     
     heat1_input.close()
     
-def prepare_heat2_input(assay_folder):
+def prepare_heat2_input(output_path):
    
-    with open(f"{assay_folder}/heat2.in","w") as heat2_input:
+    with open(f"{output_path}/heat2.in","w") as heat2_input:
         heat2_input.write(f"Second heating stage of the solvent and solute, with restraints in the protein backbone\n")
         heat2_input.write("&cntrl\n")
         heat2_input.write("imin = 0,\n")
@@ -188,9 +189,9 @@ def prepare_heat2_input(assay_folder):
     
     heat2_input.close()
    
-def prepare_equil_input(assay_folder):
+def prepare_equil_input(output_path):
    
-    with open(f"{assay_folder}/equi.in","w") as equi_input:
+    with open(f"{output_path}/equi.in","w") as equi_input:
         equi_input.write(f"Equilibration stage in which only the protein backbone is restrained\n")
         equi_input.write(f"&cntrl\n")
         equi_input.write(f"imin = 0,\n") 
@@ -218,9 +219,9 @@ def prepare_equil_input(assay_folder):
     
     equi_input.close()
     
-def prepare_prod_input(assay_folder):
+def prepare_prod_input(output_path):
     
-    with open(f"{assay_folder}/prod.in","w") as prod_input:
+    with open(f"{output_path}/prod.in","w") as prod_input:
         prod_input.write(f"Production stage in which only the protein backbone is restrained\n")
         prod_input.write(f"&cntrl\n")
         prod_input.write(f"imin = 0,\n") 
@@ -246,9 +247,9 @@ def prepare_prod_input(assay_folder):
         prod_input.write(f"&end\n")
         prod_input.write(f"END\n")
         
-def prepare_md_execution_script(assay_folder):
+def prepare_md_execution_script(output_path):
     pmemd_cuda_path = shutil.which('pmemd.cuda')
-    with open(f'{assay_folder}/md_execution.sh','a') as exec_file:
+    with open(f'{output_path}/md_execution.sh','a') as exec_file:
         exec_file.write("echo 'Executing Min1'\n")
         exec_file.write(f"{pmemd_cuda_path} -O -i min1.in -o min1.out -p complex.prmtop -c complex.inpcrd -r min1.crd -ref complex.inpcrd \n")
         exec_file.write("echo 'Executing Min2'\n")
@@ -264,8 +265,8 @@ def prepare_md_execution_script(assay_folder):
 
     exec_file.close()
 
-def prepare_md_execution_script_mendieta(assay_folder,mendieta_assays_path="NONE"):
-    with open(f'{assay_folder}/md_execution_mendieta.sh','a') as exec_file:
+def prepare_md_execution_script_mendieta(output_path,mendieta_assays_path="NONE"):
+    with open(f'{output_path}/md_execution_mendieta.sh','a') as exec_file:
         exec_file.write("#!/bin/bash \n")
         exec_file.write("### Nombre de la tarea\n")
         exec_file.write("#SBATCH --job-name=nombre\n")
@@ -291,18 +292,18 @@ def prepare_md_execution_script_mendieta(assay_folder,mendieta_assays_path="NONE
 
     exec_file.close()
 
-def run_tleap_input(assay_folder,input_file):
+def run_tleap_input(output_path,input_file):
     
     tleap_path = shutil.which('tleap')
-    command = f'{tleap_path} -f {assay_folder}/{input_file}' 
+    command = f'{tleap_path} -f {output_path}/{input_file}' 
     subprocess.run(command, shell=True, capture_output=True, text=True)
     
-def perform_minimization(assay_folder,ligand_prefix,solvent,inform=1):
+def perform_minimization(output_path,ligand_prefix,solvent,inform=1):
     # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
     pmemd_path = shutil.which('pmemd.cuda')
     # Run first minimization procedure
     try:
-        command = f'{pmemd_path} -O -i {assay_folder}/min1.in -o {assay_folder}/min1.out -p {assay_folder}/complex.prmtop -c {assay_folder}/complex.inpcrd -r {assay_folder}/min1.crd -ref {assay_folder}/complex.inpcrd' 
+        command = f'{pmemd_path} -O -i {output_path}/min1.in -o {output_path}/min1.out -p {output_path}/complex.prmtop -c {output_path}/complex.inpcrd -r {output_path}/min1.crd -ref {output_path}/complex.inpcrd' 
         if inform == 1:
             print(f"Runnning 'min1' for ligand: '{ligand_prefix}'")
         subprocess.run(command, shell=True, capture_output=True, text=True)
@@ -316,8 +317,8 @@ def perform_minimization(assay_folder,ligand_prefix,solvent,inform=1):
             print(f"Runnning 'min2' for ligand: '{ligand_prefix}'")
         subprocess.run(command, shell=True, capture_output=True, text=True)
     
-def write_mmgbsa_input(assay_folder):
-    with open(f'{assay_folder}/mmgbsa.in','w') as mmgbsa_file:
+def write_mmgbsa_input(output_path):
+    with open(f'{output_path}/mmgbsa.in','w') as mmgbsa_file:
         mmgbsa_file.write("Per-residue GB and PB decomposition \n")
         mmgbsa_file.write("&general \n")
         mmgbsa_file.write("startframe = 1, interval = 100, verbose=1, \n")
@@ -331,14 +332,14 @@ def write_mmgbsa_input(assay_folder):
         
     mmgbsa_file.close()
 
-def strip_waters(assay_folder,traj_file,prmtop_file):
+def strip_waters(output_path,traj_file,prmtop_file):
     traj_file_prefix = traj_file.split('.')[0]
     traj_file_extension = traj_file.split('.')[1]
-    with open(f'{assay_folder}/cpptraj_strip_wat.in','w') as cpptraj_file:
-        cpptraj_file.write(f"parm {assay_folder}/{prmtop_file}\n")
-        cpptraj_file.write(f"trajin {assay_folder}/{traj_file}\n")
+    with open(f'{output_path}/cpptraj_strip_wat.in','w') as cpptraj_file:
+        cpptraj_file.write(f"parm {output_path}/{prmtop_file}\n")
+        cpptraj_file.write(f"trajin {output_path}/{traj_file}\n")
         cpptraj_file.write(f"strip :WAT,Na+,Cl- \n")
-        cpptraj_file.write(f"trajout {assay_folder}/{traj_file_prefix}_strip.{traj_file_extension} trajectory  \n")
+        cpptraj_file.write(f"trajout {output_path}/{traj_file_prefix}_strip.{traj_file_extension} trajectory  \n")
         cpptraj_file.write(f"go \n")
         cpptraj_file.write(f"quit \n")
     
@@ -347,18 +348,18 @@ def strip_waters(assay_folder,traj_file,prmtop_file):
     # Determine the ante_MMPBSA path
     cpptraj_path = shutil.which('cpptraj')
     # Run cpptraj computation to strip water molecules
-    command = f'{cpptraj_path} -i {assay_folder}/cpptraj_strip_wat.in' 
+    command = f'{cpptraj_path} -i {output_path}/cpptraj_strip_wat.in' 
     subprocess.run(command, shell=True, capture_output=True, text=True)
     
-def apply_ante_MMPBSA(assay_folder):
+def apply_ante_MMPBSA(output_path):
     # Determine the ante_MMPBSA path
     anteMMPBSA_path = shutil.which('ante-MMPBSA.py')
     # Run ante_MMPBSA computation
-    command = f'{anteMMPBSA_path} -p {assay_folder}/complex.prmtop -s :WAT,Na+,Cl- -c {assay_folder}/complex_MMGBSA.prmtop -r {assay_folder}/receptor_MMGBSA.prmtop -l {assay_folder}/ligand_MMGBSA.prmtop -n :UNL' 
+    command = f'{anteMMPBSA_path} -p {output_path}/complex.prmtop -s :WAT,Na+,Cl- -c {output_path}/complex_MMGBSA.prmtop -r {output_path}/receptor_MMGBSA.prmtop -l {output_path}/ligand_MMGBSA.prmtop -n :UNL' 
     print(f"Computing ante_MMPBSA")
     subprocess.run(command, shell=True, capture_output=True, text=True)
 
-def compute_MMPBSA(assay_folder,traj_input):
+def compute_MMPBSA(output_path,traj_input):
     
     
     # Check if the MMPBSA.py script is available in the conda environment, if so delete it so as to use the system one
@@ -373,21 +374,20 @@ def compute_MMPBSA(assay_folder,traj_input):
         # Get the MMPBSA.py path
         MMPBSA_path = shutil.which('MMPBSA.py')
         # Run ante_MMPBSA computation
-        command = f'{MMPBSA_path} -i {assay_folder}/mmgbsa.in -o {assay_folder}/mmgbsa.out -do {assay_folder}/mmgbsa_DECOMP.out -cp {assay_folder}/complex_MMGBSA.prmtop -rp {assay_folder}/receptor_MMGBSA.prmtop -lp {assay_folder}/ligand_MMGBSA.prmtop -y {assay_folder}/{traj_input}'
+        command = f'{MMPBSA_path} -i {output_path}/mmgbsa.in -o {output_path}/mmgbsa.out -do {output_path}/mmgbsa_DECOMP.out -cp {output_path}/complex_MMGBSA.prmtop -rp {output_path}/receptor_MMGBSA.prmtop -lp {output_path}/ligand_MMGBSA.prmtop -y {output_path}/{traj_input}'
         print(f"Computing MMPBSA")
         subprocess.run(command, shell=True, capture_output=True, text=True)
         
         # Clean the temporal files
-        command = f'{MMPBSA_path} -i {assay_folder}/mmgbsa.in -o {assay_folder}/mmgbsa.out -do {assay_folder}/mmgbsa_DECOMP.out -cp {assay_folder}/complex_MMGBSA.prmtop -rp {assay_folder}/receptor_MMGBSA.prmtop -lp {assay_folder}/ligand_MMGBSA.prmtop -y {assay_folder}/{traj_input} --clean'
+        command = f'{MMPBSA_path} -i {output_path}/mmgbsa.in -o {output_path}/mmgbsa.out -do {output_path}/mmgbsa_DECOMP.out -cp {output_path}/complex_MMGBSA.prmtop -rp {output_path}/receptor_MMGBSA.prmtop -lp {output_path}/ligand_MMGBSA.prmtop -y {output_path}/{traj_input} --clean'
         
         subprocess.run(command, shell=True, capture_output=True, text=True)
         
-        return assay_folder, f"{assay_folder}/mmgbsa_DECOMP.out"
+        return output_path, f"{output_path}/mmgbsa_DECOMP.out"
     
     except Exception as error:
         print(f"Error during MMPBSA computation: {error}")
         return None, None
-    
     
 def clean_MMPBSA_files(target_dir):
     patterns_to_retain = ['renum.csv','_pose_']
@@ -416,10 +416,24 @@ def clean_MMPBSA_files(target_dir):
     #                 if os.path.isfile(file_path):
     #                 os.remove(file_path)
 
-def renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename):
-    # Get a dictionary (resname_resnum) for the original receptor
-    receptor_sequence_dict = general_functions.get_pdb_sequence_dict(receptor_filename,resname_field=3,resnumber_field=4)
+def renumber_mmgbsa_output(output_path,main_fingerprints_folder,decomp_file,receptor_filename,iteration):
     
+    # Parse iformation regarding the receptor file to manage renumbering
+    if iteration == 1:
+        resname_field,resnumber_field,chain_name_field = parse_receptor_fields(receptor_filename, main_fingerprints_folder)
+    
+    else:
+        # This will load the parameters from the 'params.json' file
+        with open(f"{main_fingerprints_folder}/receptor_fields.json",'r') as file:
+            loaded_params = json.load(file)
+
+        resname_field = loaded_params['resname_field']
+        resnumber_field = loaded_params['resnumber_field']
+        chain_name_field = loaded_params['chain_name_field']
+    
+    # Get a dictionary (resname_resnum) for the original receptor
+    receptor_sequence_dict = general_functions.get_pdb_sequence_dict(receptor_filename,resname_field,resnumber_field,chain_name_field)
+        
     # Get a dictionary (resname_resnum_vales) for the data in the decomp file
     decomp_file_dict = parse_mmgbsa_output(decomp_file)
     
@@ -430,9 +444,9 @@ def renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename):
 
     ## Process both dictionaries and output the final .csv file
     # This will out a .csv file with components and renumbered residues values
-    decomp_csv_file_renum = prepare_mmgbsa_renumbered_output(receptor_sequence_dict,decomp_file_dict,assay_folder)
+    decomp_csv_file_renum = prepare_mmgbsa_renumbered_output(receptor_sequence_dict,decomp_file_dict,output_path)
     # This will out a .csv file with components and amber residues values
-    decomp_csv_file = prepare_mmgbsa_original_output(receptor_sequence_dict,decomp_file_dict,assay_folder)
+    decomp_csv_file = prepare_mmgbsa_original_output(receptor_sequence_dict,decomp_file_dict,output_path)
 
     return decomp_csv_file,decomp_csv_file_renum
 
@@ -463,32 +477,32 @@ def prepare_mmgbsa_renumbered_output(dict1,dict2,assay_folder):
     with open(renumbered_file,'w') as output_file_renum:
         counter = 1
         for key, value in dict2.items():
-            resname,resnum = dict1[int(key)].split('_')
+            resname,chain,resnum = dict1[int(key)].split('_')
             vdw,ele,gas,pol_solv,np_solv,total = value.split('_')[2:]
             # Write a record into the output .csv file
-            record = f"{resname},{resnum},{vdw},{ele},{gas},{pol_solv},{np_solv},{total}\n"
+            record = f"{resname},{chain},{resnum},{vdw},{ele},{gas},{pol_solv},{np_solv},{total}\n"
             # Write the header for the first record
             if counter == 1:
-                output_file_renum.write("resname,resnumber,vdw,ele,gas,pol_solv,np_solv,total\n")
+                output_file_renum.write("resname,chain,resnumber,vdw,ele,gas,pol_solv,np_solv,total\n")
                 counter += 1
 
             output_file_renum.write(record)
 
     return renumbered_file
 
-def prepare_mmgbsa_original_output(dict1,dict2,assay_folder):
+def prepare_mmgbsa_original_output(dict1,dict2,output_path):
     # This will write a .csv file with the components with renumbered residue numbers
-    original_file = f'{assay_folder}/mmgbsa_DECOMP.csv'
+    original_file = f'{output_path}/mmgbsa_DECOMP.csv'
     with open(original_file,'w') as output_file:
         counter = 1
         for key, value in dict2.items():
-            resname,resnum = dict1[int(key)].split('_')
+            resname,chain,resnum = dict1[int(key)].split('_')
             vdw,ele,gas,pol_solv,np_solv,total = value.split('_')[2:]
             # Write a record into the output .csv file
-            record = f"{resname},{key},{vdw},{ele},{gas},{pol_solv},{np_solv},{total}\n"
+            record = f"{resname},{chain},{key},{vdw},{ele},{gas},{pol_solv},{np_solv},{total}\n"
             # Write the header for the first record
             if counter == 1:
-                output_file.write("resname,resnumber,vdw,ele,gas,pol_solv,np_solv,total\n")
+                output_file.write("resname,chain,resnumber,vdw,ele,gas,pol_solv,np_solv,total\n")
                 counter += 1
 
             output_file.write(record)
@@ -518,3 +532,30 @@ def create_md_assay_registry(db,docking_assay_id,docking_pose_id):
 
 def create_md_assay_folder(assay_folder):
     os.makedirs(f"{assay_folder}",exist_ok=True)
+    
+def parse_receptor_fields(receptor_filename, main_fingerprints_folder):
+    with open(receptor_filename,'r') as file:
+        residue = 1
+        for line in file:
+            # In the first line require parsing parameters:
+            line_split = line.rsplit()
+            if residue == 1 and len(line_split) > 5 and line_split[0] == 'ATOM':
+                print("Showing a receptor sample line to input required parameters: \n")
+                print(line)
+                resname_field = int(input("indicate the 0-based field number of the residue name: "))
+                resnumber_field = int(input("indicate the 0-based field number of the residue number: "))
+                chain_name_field = int(input("indicate the 0-based field number of the Chain Name (-1 if not present): "))
+                
+                residue += 1
+    
+    ## Write the parameters to a file in the assay folder
+    params = {"resname_field": resname_field, "resnumber_field": resnumber_field, "chain_name_field": chain_name_field}
+    
+    with open(f"{main_fingerprints_folder}/receptor_fields.json",'w') as file:
+        json.dump(params, file, indent=4)
+    
+    file.close()
+    
+    
+    
+    return resname_field,resnumber_field,chain_name_field

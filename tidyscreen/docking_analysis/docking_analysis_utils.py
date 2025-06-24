@@ -140,7 +140,7 @@ def extract_1_pdb_per_cluster(assay_folder,results_db_file):
             pdb_output.close()
         
 def create_fingerprints_analysis_folder(self,assay_folder,assay_id,results_pose_id):
-    # Creat the for to store all files
+    # Create the for to store all files
     output_path = f'{assay_folder}/fingerprints_analyses/pose_{results_pose_id}'
     Path(output_path).mkdir(parents=True, exist_ok=True)
     # Retrieve the dlg corresponding to the ligand
@@ -282,50 +282,51 @@ def retrieve_table_name_from_assay_id(self,assay_id):
     
     return table_name
     
-def compute_fingerprints(assay_folder,complex_pdb_file,receptor_filename,solvent,min_steps):
+def compute_fingerprints(output_path,main_fingerprints_folder,complex_pdb_file,receptor_filename,solvent,min_steps,iteration):
     # From the complex filename prepare the corresponding files naming:
     ligand_prefix = complex_pdb_file.split('/')[-1].split('_')[1]
     ligand_mol2_ref_file = f'{ligand_prefix}_gaff.mol2'
     ligand_frcmod_ref_file = f'{ligand_prefix}.frcmod'
     # Prepare the input files to compute prepare the .prmtop and .inpcrd
-    md_utils.prepare_md_initial_files(assay_folder,complex_pdb_file,ligand_mol2_ref_file,ligand_frcmod_ref_file, solvent,min_steps,dynamics=0)
+    md_utils.prepare_md_initial_files(output_path,complex_pdb_file,ligand_mol2_ref_file,ligand_frcmod_ref_file, solvent,min_steps,dynamics=0)
     # Execute tLeap initialization
-    md_utils.run_tleap_input(assay_folder,input_file='tleap.in')
+    md_utils.run_tleap_input(output_path,input_file='tleap.in')
     # Perform minimizations
-    md_utils.perform_minimization(assay_folder,ligand_prefix,solvent)
+    md_utils.perform_minimization(output_path,ligand_prefix,solvent)
     # Create the MMGBSA input file
-    md_utils.write_mmgbsa_input(assay_folder)
+    md_utils.write_mmgbsa_input(output_path)
     # Use ante ante-MMPBSA.py to create the files required for computation
-    md_utils.apply_ante_MMPBSA(assay_folder)
+    md_utils.apply_ante_MMPBSA(output_path)
     # Strip solvent (if explicit model was used) and/or compute the MMPBSA 
     if solvent == "explicit":
         # Strip waters from min2.crd to
         md_utils.strip_waters(assay_folder,"min2.crd","complex.prmtop")
         # perform the MMPBSA analysis
-        assay_folder, decomp_file = md_utils.compute_MMPBSA(assay_folder,"min2_strip.crd")
+        assay_folder, decomp_file = md_utils.compute_MMPBSA(output_path,"min2_strip.crd")
 
         # renumber the output of MMGBSA according to the original receptor.
-        decomp_csv_file,decomp_csv_file_renum = md_utils.renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename)
+        decomp_csv_file,decomp_csv_file_renum = md_utils.renumber_mmgbsa_output(output_path,decomp_file,receptor_filename,iteration)
         
         # Create a dictionary of resname/resnumber tleap vs. crystal
         tleap_vs_cristal_reference_dict = generate_tleap_vs_cristal_reference_dict(decomp_csv_file,decomp_csv_file_renum)
         
         # Return prmtop and minimized file
-        return f'{assay_folder}/complex_MMGBSA.prmtop', f'{assay_folder}/min2_strip.crd', tleap_vs_cristal_reference_dict, decomp_csv_file_renum
+        return f'{output_path}/complex_MMGBSA.prmtop', f'{output_path}/min2_strip.crd', tleap_vs_cristal_reference_dict, decomp_csv_file_renum
         
     if solvent == "implicit":
         # perform the MMPBSA analysis
-        assay_folder, decomp_file = md_utils.compute_MMPBSA(assay_folder,"min1.crd")
+        output_path, decomp_file = md_utils.compute_MMPBSA(output_path,"min1.crd")
         
-        print(f"Decomp file: {decomp_file}")
+        print(f"Iteration: {iteration}")
+        
         # renumber the output of MMGBSA according to the original receptor.
-        decomp_csv_file,decomp_csv_file_renum = md_utils.renumber_mmgbsa_output(assay_folder,decomp_file,receptor_filename)
+        decomp_csv_file,decomp_csv_file_renum = md_utils.renumber_mmgbsa_output(output_path,main_fingerprints_folder,decomp_file,receptor_filename,iteration)
 
         # Create a dictionary of resname/resnumber tleap vs. crystal
         tleap_vs_cristal_reference_dict = generate_tleap_vs_cristal_reference_dict(decomp_csv_file,decomp_csv_file_renum)
 
         # Return prmtop and minimized file
-        return f'{assay_folder}/complex_MMGBSA.prmtop', f'{assay_folder}/min1.crd', tleap_vs_cristal_reference_dict, decomp_csv_file_renum
+        return f'{output_path}/complex_MMGBSA.prmtop', f'{output_path}/min1.crd', tleap_vs_cristal_reference_dict, decomp_csv_file_renum
     
 def generate_tleap_vs_cristal_reference_dict(decomp_file,decomp_file_renum):
     
@@ -380,12 +381,23 @@ def store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligna
     conn = tidyscreen.connect_to_db(results_db)
     cursor = conn.cursor()
     
+    # Get the energy values from the MMPBSA general outfile
+    mmgbsa_outfile = f"{assay_folder}/fingerprints_analyses/pose_{results_pose_id}/mmgbsa.out"
+    vdwaals, eel, egb, esurf, delta_g_gas, delta_g_solv, delta_g_total = parse_mmgbsa_general_output(mmgbsa_outfile)
+    
     # Create table if it doesn't exist
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS fingerprints (
         Pose_ID INTEGER PRIMARY KEY,
         LigName TEXT,
         sub_pose TEXT,
+        vdwaals REAL,
+        eel REAL,
+        egb REAL,
+        esurf REAL,
+        delta_g_gas REAL,
+        delta_g_solv REAL,
+        delta_g_total REAL,
         complex_pdb_file BLOB,
         mmpbsa_csv_file BLOB,
         prolif_csv_file BLOB
@@ -399,8 +411,8 @@ def store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligna
     
     try: 
         # Insert a single row
-        fingerprint_data = (results_pose_id,ligname,sub_pose,complex_tar,mmpbsa_decomp_csv_tar,prolif_csv_tar)
-        cursor.execute('INSERT INTO fingerprints (Pose_ID, LigName, sub_pose, complex_pdb_file, mmpbsa_csv_file, prolif_csv_file) VALUES (?, ?, ?, ?,?,?)', fingerprint_data)
+        fingerprint_data = (results_pose_id,ligname,sub_pose,vdwaals,eel,egb,esurf,delta_g_gas,delta_g_solv,delta_g_total,complex_tar,mmpbsa_decomp_csv_tar,prolif_csv_tar)
+        cursor.execute('INSERT INTO fingerprints (Pose_ID, LigName, sub_pose, vdwaals, eel, egb, esurf, delta_g_gas, delta_g_solv, delta_g_total, complex_pdb_file, mmpbsa_csv_file, prolif_csv_file) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', fingerprint_data)
         # Commit changes and close connection
         conn.commit()
         conn.close()
@@ -408,11 +420,11 @@ def store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligna
     except Exception as error:
         print(f"Fingerprints for pose: '{results_pose_id}' already exists. Passing...")
 
-def store_docked_pose_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,pose_pdb_file):
-    results_db = f"{assay_folder}/assay_{assay_id}.db"
+def store_docked_pose_in_db(output_path,assay_id,results_pose_id,ligname,sub_pose,pose_pdb_file):
+    results_db = f"{output_path}/assay_{assay_id}.db"
     conn = tidyscreen.connect_to_db(results_db)
     cursor = conn.cursor()
-    
+        
     # Create table if it doesn't exist
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS docked_poses (
@@ -436,3 +448,40 @@ def store_docked_pose_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_po
     
     except Exception as error:
         print(f"Docked por corresponding to: '{results_pose_id}' already exists. Passing...")
+        
+        
+def parse_mmgbsa_general_output(mmgbsa_outfile):
+    
+    with open(mmgbsa_outfile,'r') as output_file:
+        activate = 0
+        for line in output_file:
+            line_split = line.rsplit()
+            if len(line_split) > 0 and line_split[0] == "Differences":
+                activate = 1
+
+            if activate == 1 and len(line_split) > 1:
+                
+                if line_split[0] == "VDWAALS":
+                    vdwaals = float(line_split[1])
+                    
+                if line_split[0] == "EEL" and len(line_split) > 2:
+                    eel = float(line_split[1])
+
+                if line_split[0] == "EGB" and len(line_split) > 2:
+                    egb = float(line_split[1])
+
+                if line_split[0] == "ESURF" and len(line_split) > 2:
+                    esurf = float(line_split[1])
+
+                if line_split[0] == "DELTA" and line_split[2] == "gas" and len(line_split) > 4:
+                    delta_g_gas = float(line_split[3])
+                
+                if line_split[0] == "DELTA" and line_split[2] == "solv" and len(line_split) > 4:
+                    delta_g_solv = float(line_split[3])
+
+                if line_split[0] == "DELTA" and line_split[1] == "TOTAL" and len(line_split) > 3:
+                    delta_g_total = float(line_split[2])
+
+    output_file.close()
+
+    return vdwaals, eel, egb, esurf, delta_g_gas, delta_g_solv, delta_g_total
