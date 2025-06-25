@@ -576,7 +576,6 @@ def sybyl_mol2_from_pdb(inchi_key,charge,temp_dir):
         
     return output_file, output_tar_file
 
-
 def gaff_mol2_from_pdb(inchi_key,charge,temp_dir):
     
     pdb_file = f"{temp_dir}/{inchi_key}.pdb"
@@ -604,7 +603,6 @@ def gaff_mol2_from_pdb(inchi_key,charge,temp_dir):
     output_tar_file = generate_tar_file(output_file)
         
     return output_file, output_tar_file
-
 
 def compute_frcmod_file(mol2_file,at):
     # Get the prefixes for the file
@@ -1486,6 +1484,27 @@ def list_available_smarts_filters(db):
     print("Available SMARTS filters:")
     for row in rows:
         print(f"Filter_id: {row[0]}, Filter_Name: {row[1]}, SMARTS: {row[2]}")
+
+def list_available_smarts_reactions(db):
+    """
+    List all available SMARTS filters in the database.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    print(db)
+    
+    cursor.execute("SELECT * FROM smarts_reactions")
+    rows = cursor.fetchall()
+    
+    if not rows:
+        print("No SMARTS reactions found in the database.")
+        return []
+    
+    print("Available SMARTS reactions:")
+    for row in rows:
+        print(f"Reaction_id: {row[0]}, Reaction_SMARTS: {row[1]}, Description: {row[2]}")
+
     
 def insert_smarts_reaction_in_table(db,smarts_reaction,description):
     
