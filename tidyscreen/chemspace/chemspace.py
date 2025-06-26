@@ -225,6 +225,13 @@ class ChemSpace:
         db = self.cs_database_file
         cs_utils.list_available_smarts_reactions(db)
         
+    def list_available_smarts_reactions_workflows(self,complete_info=0):
+        """
+        Will list all available SMARTS reactions in the project
+        """
+        db = self.cs_database_file
+        cs_utils.list_available_smarts_reactions_workflows(db,complete_info)
+        
     def add_smarts_reaction(self,smarts_reaction,description=None):
         try: 
             db = f"{self.cs_db_path}/chemspace.db"
@@ -234,6 +241,67 @@ class ChemSpace:
         except Exception as error:
             print(f"Error inserting SMARTS filter: '{smarts_reaction}' \n {error}")
     
+    def add_smarts_reaction_workflow(self,smarts_reactions_id_list):
+        """
+        Create a workflow of chemical transformations (reactions) based on available reactions lists.
+        
+        Args:
+            smarts_reactions_id_list (list): List of SMARTS reaction IDs to be included
+        
+        Returns:
+            None
+            
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.add_smarts_reaction_workflow([reaction1_id, reaction2_id,..])
+        """
+        
+        try: 
+            db = f"{self.cs_db_path}/chemspace.db"
+            cs_utils.check_smarts_reaction_workflow_existence(db,smarts_reactions_id_list)
+            description = input("Enter a description for the SMARTS reactions workflow: ") 
+            smarts_reactions_list, smarts_descriptions_list = cs_utils.parse_smarts_reactions_id_list(db,smarts_reactions_id_list)
+            cs_utils.store_smarts_reactions_workflow(db,smarts_reactions_list,smarts_reactions_id_list,smarts_descriptions_list,description)
+            print(f"Succesfully created SMARTS reactions workflow with reactions: '{smarts_reactions_id_list}'")
+            
+        except Exception as error:
+            print("An error occurred while trying to create the SMARTS reactions workflow. Please check the inputs and try again.")
+            print(error)
+            
+    def apply_reaction_workflow(self,reaction_workflow_id,reactants_lists):
+        """
+        Will apply a reaction workflow based on a given list of reactants and a reaction workflow ID.
+        
+        Args:
+            reaction_workflow_id (int): ID of the reaction workflow to be used
+            reactants_lists (list of lists): List of lists containing reactants for each reaction in the workflow:
+                [
+                    [reactant1, reactant2, ...],  # Reactants for the first reaction
+                    [reactant3, reactant4, ...],  # Reactants for the second reaction
+                    ...
+                ]
+        
+        Returns:
+        
+        """
+        
+        try:
+            # Check if the reaction definition is correct
+            smarts_reaction_workflow_list = cs_utils.check_reaction_definition(self.cs_database_file,reaction_workflow_id,reactants_lists)
+            
+            # Check if reaction results table exists, if not create it
+            cs_utils.create_reactions_results_table(self.cs_database_file)    
+            
+            # Apply the corresponding reaction workflow
+            final_products_df = cs_utils.apply_validated_reaction_workflow(self.cs_database_file,smarts_reaction_workflow_list,reactants_lists)
+            
+            # Store the final products in the reactions results the database
+            cs_utils.store_reaction_results(self.cs_database_file, final_products_df, reaction_workflow_id, reactants_lists)
+        
+        except:
+            print("An error occurred while trying to apply the reaction workflow. Please check the inputs and try again.")
+            
+        
     def copy_table_to_new_name(self, old_table_name, new_table_name):
         """
         Copy the content of an existing table to a new table with a different name.
@@ -252,19 +320,3 @@ class ChemSpace:
         conn.close()
         
         print(f"Successfully copied table '{old_table_name}' to '{new_table_name}'")
-    
-    def add_smarts_reaction_workflow(self,smarts_reactions_id_list):
-        """
-        Will create a workflow to subset a table by SMARTS reactions
-        """
-        try: 
-            db = f"{self.cs_db_path}/chemspace.db"
-            cs_utils.check_smarts_reaction_workflow_existence(db,smarts_reactions_id_list)
-            description = input("Enter a description for the SMARTS reactions workflow: ") 
-            smarts_reactions_list, smarts_descriptions_list = cs_utils.parse_smarts_reactions_id_list(db,smarts_reactions_id_list)
-            cs_utils.store_smarts_reactions_workflow(db,smarts_reactions_list,smarts_reactions_id_list,smarts_descriptions_list,description)
-            print(f"Succesfully created SMARTS reactions workflow with reactions: '{smarts_reactions_id_list}'")
-            
-        except Exception as error:
-            print("An error occurred while trying to create the SMARTS reactions workflow. Please check the inputs and try again.")
-            print(error)

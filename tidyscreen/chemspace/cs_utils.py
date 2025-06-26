@@ -215,10 +215,11 @@ def compute_inchi_key_for_whole_df(df,db,file):
     df["inchi_key"] = df["SMILES"].parallel_apply(lambda smiles: compute_inchi_key(smiles,db,file))
     return df
 
-def compute_inchi_key_refactored(row,db,file):
+def compute_inchi_key_refactored(row,db):
     smiles = row["SMILES"]
     mol = Chem.MolFromSmiles(smiles)
     inchi_key = Chem.MolToInchiKey(mol)
+    
     return inchi_key
     
 def compute_inchi_key(smiles,db,file):
@@ -1492,8 +1493,6 @@ def list_available_smarts_reactions(db):
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
     
-    print(db)
-    
     cursor.execute("SELECT * FROM smarts_reactions")
     rows = cursor.fetchall()
     
@@ -1505,6 +1504,30 @@ def list_available_smarts_reactions(db):
     for row in rows:
         print(f"Reaction_id: {row[0]}, Reaction_SMARTS: {row[1]}, Description: {row[2]}")
 
+def list_available_smarts_reactions_workflows(db,complete_info):
+    """
+    List all available SMARTS filters in the database.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    if complete_info == 0:
+        cursor.execute("SELECT id, smarts_descriptions FROM smarts_reactions_workflow")
+    else:
+        cursor.execute("SELECT * FROM smarts_reactions_workflow")
+    
+    rows = cursor.fetchall()
+    
+    if not rows:
+        print("No SMARTS reactions workflows found in the database.")
+        return []
+    
+    print("Available SMARTS reactions:")
+    for row in rows:
+        if complete_info == 0:
+            print(f"Reaction_workflow_id: {row[0]}, SMARTS_description: {row[1]}")
+        else:
+            print(f"Reaction_workflow_id: {row[0]}, reaction_SMARTS_ids: {row[1]}, SMARTS_description: {row[2]}, description: {row[3]}")
     
 def insert_smarts_reaction_in_table(db,smarts_reaction,description):
     
@@ -1561,3 +1584,209 @@ def store_smarts_reactions_workflow(db,smarts_reactions_list,smarts_reactions_id
     
     conn.commit()
     conn.close()
+    
+def create_reactions_results_table(db):
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Create a new table for the SMARTS reactions workflow if it does not exist
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS smarts_reactions_results (id INTEGER PRIMARY KEY AUTOINCREMENT, reaction_workflow_id INTEGER, reactants_lists TEXT, results_table TEXT)")
+    
+    conn.commit()
+    conn.close()
+    
+def check_reaction_definition(db,reaction_workflow_id,reactants_lists):
+    
+    try: 
+        # Retrieve the reaction workflow from the database
+        smarts_reaction_workflow_list = retrieve_reaction_smarts_definition(db,reaction_workflow_id)
+        
+        # Check if the lists of lists of reactants are constistant with the reaction workflow definition
+        check_workflows_vs_reactants_lists(smarts_reaction_workflow_list,reactants_lists)
+        
+        return smarts_reaction_workflow_list
+    
+    except:
+        print("Writting failed attempt record to the database...")
+        write_reaction_attempt_record_to_db(db,smarts_reaction_workflow_list,"Error checking the reaction workflow definition vs the reactants lists. Stopping...")
+        sys.exit()
+        
+        
+        
+def retrieve_reaction_smarts_definition(db,reaction_workflow_id):
+    
+    # get the corresponding reaction workflow from the database
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()  
+    cursor.execute("SELECT smarts_reactions FROM smarts_reactions_workflow WHERE id = ?", (reaction_workflow_id,))
+    
+    row = cursor.fetchone()[0]
+    
+    # Convert the smarts_reaction_workflow to a list
+    smarts_reaction_workflow_list = json.loads(row)
+    
+    return smarts_reaction_workflow_list
+    
+def check_workflows_vs_reactants_lists(smarts_reaction_workflow_list,reactants_lists):
+    """
+    Check if the lists of lists of reactants are consistant with the reaction workflow definition.
+    """
+    
+    # Check if the number of reactants in each list is consistent with the reaction workflow definition
+    
+    try: 
+    
+        for index, smarts_reaction_workflow_step in enumerate(smarts_reaction_workflow_list):
+            nbr_required_reactants = smarts_reaction_workflow_step.split('>>')[0].count(".") + 1   # Count the number of '.' in the SMARTS string to determine the number of reactants
+            
+            if nbr_required_reactants != len(reactants_lists[index]):
+                print(f"The number of reactants in the list {index} is not consistent with the reaction workflow definition. Stopping...")
+                
+                sys.exit()
+                
+        # Inform successful termination of reactino steps checking    
+        print("Checking the reaction workflow definition vs the reactants lists: OK")
+    
+    except:
+        print("Error checking the reaction workflow definition vs the reactants lists. Stopping...")
+        sys.exit()
+
+def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_lists):
+    
+    # Create an empty dataframe to store the results of the reaction step
+    workflow_df = pd.DataFrame()
+        
+    for index, reaction in enumerate(smarts_reaction_workflow):
+        
+        reaction_molecularity = reaction.split('>>')[0].count(".") + 1
+        
+        if reaction_molecularity == 1:
+            # Check if the reactant for the current step is originated in the last reaction step
+            if reactants_lists[index][0] != "->":
+                # Retieve the reactants as a dataframe
+                reactants_df = retrieve_smiles_reactants_as_df(db,reactants_lists[index])
+                
+                
+            else:
+                colname = f"SMILES_product_step_{index-1}"
+                
+                reactants_serie = workflow_df[colname] # return a pandas series with the SMILES of the products from the previous step
+                # Convert the resulting series to a DataFrame and assign "SMILES" as column name
+                reactants_df = reactants_serie.to_frame(name='SMILES')
+                
+            # Apply the unimolecular reaction step 
+            workflow_df = apply_single_unimolecular_reaction_step(db,smarts_reaction_workflow,reaction,reactants_df,index)
+        
+        elif reaction_molecularity == 2:
+            # Bimolecular reaction
+            apply_single_bimolecular_reaction_step(reaction,reactants_lists[index])
+        
+        else:
+            print(f"Reaction {reaction} is not a unimolecular or bimolecular reaction. Stopping...")
+            write_reaction_attempt_record_to_db(db,smarts_reaction_workflow,"Reaction is not a unimolecular or bimolecular reaction. Stopping...")    
+            sys.exit()
+        
+    # Once the reaction workflow is applied, get the final products from the last step
+    final_products_df = workflow_df.iloc[:,[-1]].rename(columns={workflow_df.columns[-1]: 'SMILES'})
+    
+    # Assign the name ("synth") to the final products
+    final_products_df['name'] = 'synth'
+    
+    # Assign default flag to the final products
+    final_products_df['flag'] = 0
+    
+    # Compute the inchi_key for the final products
+    pandarallel.initialize(progress_bar=False)
+    final_products_df["inchi_key"] = final_products_df.parallel_apply(lambda row: compute_inchi_key_refactored(row,db),axis=1)
+    
+       
+    return final_products_df
+     
+def apply_single_unimolecular_reaction_step(db,smarts_reaction_workflow,smarts_reaction,reactants_df,workflow_step_index):
+    
+    # Apply in a parallelized scheme the corresponding reaction
+    pandarallel.initialize(progress_bar=False)
+    product_column = f"product_step_{workflow_step_index}"
+    
+    reactants_df[f"SMILES_{product_column}"] = reactants_df['SMILES'].parallel_apply(lambda smiles: react_molecule_1_component(smiles, smarts_reaction))
+    
+    # Check if the reaction was successful
+    if reactants_df[f"SMILES_{product_column}"].isnull().all():
+        print(f"All reactants in the step {workflow_step_index} failed to react. Stopping...")
+        
+        write_reaction_attempt_record_to_db(db,smarts_reaction_workflow,"Reaction was not succesfull. Stopping...")
+        
+        sys.exit()
+    
+    else:
+        # Inform successful termination of the reaction step
+        print(f"Reaction step {workflow_step_index} applied successfully. Products stored in column: {product_column}")
+        
+        return reactants_df
+
+def apply_single_bimolecular_reaction_step(smarts_reaction,reactants_list):
+    
+    print("apply_single_bimolecular_reaction_step")
+    
+def react_molecule_1_component(smiles,reaction_smarts):
+    
+    try:
+        mol = Chem.MolFromSmiles(smiles)
+        reaction_mol = AllChem.ReactionFromSmarts(reaction_smarts)
+        product_mol = reaction_mol.RunReactants((mol,))[0][0]
+        product_smiles = Chem.MolToSmiles(product_mol)
+    
+        return product_smiles
+    
+    except Exception as error:
+        pass
+
+def retrieve_smiles_reactants_as_df(db,table_name):
+    
+    conn= sqlite3.connect(db)
+    
+    df = pd.read_sql_query(f"SELECT SMILES FROM {table_name[0]}", conn)
+    conn.close()
+    
+    return df
+    
+    
+def store_reaction_results(db, final_products_df, reaction_workflow_id, reactants_lists):
+    
+    table_name = write_reaction_attempt_record_to_db(db,reaction_workflow_id)
+        
+    save_df_to_db(db,final_products_df,table_name)
+    
+
+ # Generate a reaction attempt record in the database
+def write_reaction_attempt_record_to_db(db,reaction_workflow_id,message="Reaction attempt successful"):
+    
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    # Create a new table for the subset
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS reactions_attempts ( id INTEGER PRIMARY KEY AUTOINCREMENT, reaction_workflow_id INTEGER, table_name TEXT, result TEXT)")
+    
+    # Get the last record of 'my_column'
+    cursor.execute("SELECT id FROM reactions_attempts ORDER BY id DESC LIMIT 1")
+    result = cursor.fetchone()
+    
+    if result is None:
+        last_id = 0
+    else:
+        last_id = result[0]     
+    
+    if message == "Reaction attempt successful":
+        table_name = f"reaction_set_{last_id + 1}"
+    else:
+        table_name = "None"
+    
+    # Insert a new record with the incremented id
+    cursor.execute("INSERT INTO reactions_attempts (id, reaction_workflow_id, table_name, result) VALUES (?, ?, ?, ?)", (last_id + 1, reaction_workflow_id, table_name, message))
+    conn.commit()
+    conn.close()
+    print(f"Reaction attempt record written to the database with id: {last_id + 1}")
+    
+    return table_name
+    
+    
