@@ -46,14 +46,14 @@ class ChemSpace:
     def delete_table(self,table_name):
         cs_utils.delete_ligands_table(f"{self.cs_db_path}/chemspace.db",table_name)
 
-    def depict_ligand_table(self,table_name):
+    def depict_ligand_table(self,table_name,max_mols_ppage=25,limit=0,random=False):
         db = f"{self.cs_db_path}/chemspace.db"
         #print(self.project.proj_folders_path["chemspace"]["raw_data"])
         output_path = f"{self.project.proj_folders_path['chemspace']['misc']}/{table_name}_depict"
         # Check if the folder is already present
         cs_utils.check_folder_presence(output_path,create=1)
         # call the depiction function
-        cs_utils.depict_ligands_table(db,table_name,output_path)
+        cs_utils.depict_ligands_table(db,table_name,output_path,max_mols_ppage,limit,random)
         
         print(f"Successfully depicted ligands in table: '{output_path}'")
 
@@ -225,7 +225,7 @@ class ChemSpace:
         db = self.cs_database_file
         cs_utils.list_available_smarts_reactions(db)
         
-    def list_available_smarts_reactions_workflows(self,complete_info=0):
+    def list_available_reactions_workflows(self,complete_info=0):
         """
         Will list all available SMARTS reactions in the project
         """

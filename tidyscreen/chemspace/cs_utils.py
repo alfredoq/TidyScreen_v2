@@ -302,10 +302,17 @@ def delete_ligands_table(db,table_name):
         print("Stopping...")
         sys.exit()
 
-def depict_ligands_table(db,table_name,output_path,max_mols_ppage=25):
+def depict_ligands_table(db,table_name,output_path,max_mols_ppage,limit,random):
     conn = tidyscreen.connect_to_db(db)
     sql=f"SELECT SMILES, inchi_key, name FROM {table_name};"
     molecules_df = pd.read_sql_query(sql,conn)
+
+    if limit > 0:
+        # If a limit is provided, take only the first 'limit' rows
+        if random == True:
+            molecules_df = molecules_df.sample(limit)
+        else:
+            molecules_df = molecules_df.head(limit)
 
     # Since the molecules might be processed in chunks, it is usefull to create lists with the information in order to process them
     smiles_list, inchi_key_list, names_list = molecules_df["SMILES"].to_list(), molecules_df["inchi_key"].to_list(),molecules_df["name"].to_list()
@@ -1656,7 +1663,7 @@ def check_workflows_vs_reactants_lists(smarts_reaction_workflow_list,reactants_l
 def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_lists,remove_mull_inchi_key=True):
     
     # Create an empty dataframe to store the results of the reaction steps
-    workflow_df = pd.DataFrame()
+    final_products_df = pd.DataFrame()
         
     for index, reaction in enumerate(smarts_reaction_workflow):
         
@@ -1664,19 +1671,26 @@ def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_list
         
         if reaction_molecularity == 1:
             # Check if the reactant for the current step is originated in the last reaction step
-            if reactants_lists[index][0] != "->":
+            if "->" not in reactants_lists[index][0]:
                 # Retieve the reactants as a dataframe
                 reactants_df = retrieve_smiles_reactants_as_df(db,reactants_lists[index])
                 
             else:
-                colname = f"SMILES_product_step_{index-1}"
-                
-                reactants_serie = workflow_df[colname] # return a pandas series with the SMILES of the products from the previous step
+                # Parse the reactants_lists to get the previous step reference
+                previous_step_reference = abs(int(reactants_lists[index][0].split(":")[-1]))
+                # Prepare the column name to retrieve the products from the previous step
+                colname = f"SMILES_product_step_{index - previous_step_reference}"
+                reactants_serie = final_products_df[colname] # return a pandas series with the SMILES of the products from the previous step
                 # Convert the resulting series to a DataFrame and assign "SMILES" as column name
                 reactants_df = reactants_serie.to_frame(name='SMILES')
                 
+            
             # Apply the unimolecular reaction step 
-            workflow_df = apply_single_unimolecular_reaction_step(db,smarts_reaction_workflow,reaction,reactants_df,index)
+            df_current_step_products = apply_single_unimolecular_reaction_step(db,smarts_reaction_workflow,reaction,reactants_df,index)
+        
+            # Concatenate the products from the current step to the final products dataframe
+            final_products_df = pd.concat([final_products_df, df_current_step_products], ignore_index=True)
+        
         
         elif reaction_molecularity == 2:
             # Bimolecular reaction
@@ -1707,7 +1721,7 @@ def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_list
         
        
     # Once the reaction workflow is applied, get the final products from the last step
-    final_products_df = workflow_df.iloc[:,[-1]].rename(columns={workflow_df.columns[-1]: 'SMILES'})
+    final_products_df = final_products_df.iloc[:,[-1]].rename(columns={final_products_df.columns[-1]: 'SMILES'})
     
     # Assign the name ("synth") to the final products
     final_products_df['name'] = 'synth'
@@ -1729,12 +1743,14 @@ def apply_single_unimolecular_reaction_step(db,smarts_reaction_workflow,smarts_r
     
     # Apply in a parallelized scheme the corresponding reaction
     pandarallel.initialize(progress_bar=False)
-    product_column = f"product_step_{workflow_step_index}"
     
-    reactants_df[f"SMILES_{product_column}"] = reactants_df['SMILES'].parallel_apply(lambda smiles: react_molecule_1_component(smiles, smarts_reaction))
+    df_current_step_products = pd.DataFrame()
+    product_column = f"SMILES_product_step_{workflow_step_index}"
+    
+    df_current_step_products[product_column] = reactants_df['SMILES'].parallel_apply(lambda smiles: react_molecule_1_component(smiles, smarts_reaction))
     
     # Check if the reaction was successful
-    if reactants_df[f"SMILES_{product_column}"].isnull().all():
+    if df_current_step_products[product_column].isnull().all():
         print(f"All reactants in the step {workflow_step_index} failed to react. Stopping...")
         
         write_reaction_attempt_record_to_db(db,smarts_reaction_workflow,"Reaction was not succesfull. Stopping...")
@@ -1743,13 +1759,12 @@ def apply_single_unimolecular_reaction_step(db,smarts_reaction_workflow,smarts_r
     
     else:
         # Inform successful termination of the reaction step
-        print(f"Reaction step {workflow_step_index} applied successfully. Products stored in column: {product_column}")
+        print(f"Reaction step {workflow_step_index} applied successfully. Products stored in column: '{product_column}'")
         
-        return reactants_df
+        return df_current_step_products
 
 def apply_single_bimolecular_reaction_step(db,smarts_reaction_workflow,smarts_reaction,reactants_df1,reactants_df2,workflow_step_index):
     pandarallel.initialize(progress_bar=False)
-    
     df_all_products = pd.DataFrame()
     df_current_step_products = pd.DataFrame()
     product_column = f"product_step_{workflow_step_index}"
@@ -1793,7 +1808,6 @@ def react_molecule_1_component(smiles,reaction_smarts):
     except Exception as error:
         pass
 
-
 def react_molecule_2_components(smiles1, smiles2,reaction_smarts):
     
     try:
@@ -1807,8 +1821,6 @@ def react_molecule_2_components(smiles1, smiles2,reaction_smarts):
     
     except Exception as error:
         pass
-    
-
 
 def retrieve_smiles_reactants_as_df(db,reactants_list,index=0):
     
