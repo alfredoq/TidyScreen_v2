@@ -294,11 +294,12 @@ class ChemSpace:
             
             # Apply the corresponding reaction workflow
             final_products_df = cs_utils.apply_validated_reaction_workflow(self.cs_database_file,smarts_reaction_workflow_list,reactants_lists)
-            
+                       
             # Store the final products in the reactions results the database
             cs_utils.store_reaction_results(self.cs_database_file, final_products_df, reaction_workflow_id, reactants_lists)
         
-        except:
+        except Exception as error:
+            print(error)
             print("An error occurred while trying to apply the reaction workflow. Please check the inputs and try again.")
             
         

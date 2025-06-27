@@ -79,7 +79,7 @@ def process_input_df(df,db,file,stereo_enum):
     # Compute the InChIKey for the whole dataframe
     print("Computing InChIKey")
     pandarallel.initialize(progress_bar=True)
-    df["inchi_key"] = df.parallel_apply(lambda row: compute_inchi_key_refactored(row,db,file),axis=1)
+    df["inchi_key"] = df.parallel_apply(lambda row: compute_inchi_key_refactored(row,db),axis=1)
     # Delete duplicated molecules based on inchi_key
     df = df.drop_duplicates(subset='inchi_key', keep='first')
     # Create an 'id' column
@@ -216,11 +216,15 @@ def compute_inchi_key_for_whole_df(df,db,file):
     return df
 
 def compute_inchi_key_refactored(row,db):
-    smiles = row["SMILES"]
-    mol = Chem.MolFromSmiles(smiles)
-    inchi_key = Chem.MolToInchiKey(mol)
+    try:
+        smiles = row["SMILES"]
+        mol = Chem.MolFromSmiles(smiles)
+        inchi_key = Chem.MolToInchiKey(mol)
+        
+        return inchi_key
     
-    return inchi_key
+    except:
+        return None
     
 def compute_inchi_key(smiles,db,file):
     try:
@@ -1611,8 +1615,6 @@ def check_reaction_definition(db,reaction_workflow_id,reactants_lists):
         write_reaction_attempt_record_to_db(db,smarts_reaction_workflow_list,"Error checking the reaction workflow definition vs the reactants lists. Stopping...")
         sys.exit()
         
-        
-        
 def retrieve_reaction_smarts_definition(db,reaction_workflow_id):
     
     # get the corresponding reaction workflow from the database
@@ -1651,9 +1653,9 @@ def check_workflows_vs_reactants_lists(smarts_reaction_workflow_list,reactants_l
         print("Error checking the reaction workflow definition vs the reactants lists. Stopping...")
         sys.exit()
 
-def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_lists):
+def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_lists,remove_mull_inchi_key=True):
     
-    # Create an empty dataframe to store the results of the reaction step
+    # Create an empty dataframe to store the results of the reaction steps
     workflow_df = pd.DataFrame()
         
     for index, reaction in enumerate(smarts_reaction_workflow):
@@ -1665,7 +1667,6 @@ def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_list
             if reactants_lists[index][0] != "->":
                 # Retieve the reactants as a dataframe
                 reactants_df = retrieve_smiles_reactants_as_df(db,reactants_lists[index])
-                
                 
             else:
                 colname = f"SMILES_product_step_{index-1}"
@@ -1679,13 +1680,32 @@ def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_list
         
         elif reaction_molecularity == 2:
             # Bimolecular reaction
-            apply_single_bimolecular_reaction_step(reaction,reactants_lists[index])
+            
+            # Check if the reactant for the current step is originated in the last reaction step
+            if reactants_lists[index][0] != "->" and reactants_lists[index][1] != "->":
+                
+                # Retieve the reactants as a dataframe
+                reactants_df1 = retrieve_smiles_reactants_as_df(db,reactants_lists[index],index=0)
+                reactants_df2 = retrieve_smiles_reactants_as_df(db,reactants_lists[index],index=1)
+                
+            else:
+                colname = f"SMILES_product_step_{index-1}"
+                
+                reactants_serie = workflow_df[colname] # return a pandas series with the SMILES of the products from the previous step
+                # Convert the resulting series to a DataFrame and assign "SMILES" as column name
+                reactants_df = reactants_serie.to_frame(name='SMILES')
+            
+            
+            # Apply the unimolecular reaction step 
+            workflow_df = apply_single_bimolecular_reaction_step(db,smarts_reaction_workflow,reaction,reactants_df1,reactants_df2,index)
+            
         
         else:
             print(f"Reaction {reaction} is not a unimolecular or bimolecular reaction. Stopping...")
             write_reaction_attempt_record_to_db(db,smarts_reaction_workflow,"Reaction is not a unimolecular or bimolecular reaction. Stopping...")    
             sys.exit()
         
+       
     # Once the reaction workflow is applied, get the final products from the last step
     final_products_df = workflow_df.iloc[:,[-1]].rename(columns={workflow_df.columns[-1]: 'SMILES'})
     
@@ -1699,7 +1719,10 @@ def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_list
     pandarallel.initialize(progress_bar=False)
     final_products_df["inchi_key"] = final_products_df.parallel_apply(lambda row: compute_inchi_key_refactored(row,db),axis=1)
     
-       
+    if remove_mull_inchi_key:
+        # If the calculation of the inchi_key failed, remove the corresponding rows
+        final_products_df = final_products_df[final_products_df["inchi_key"].notnull()]
+    
     return final_products_df
      
 def apply_single_unimolecular_reaction_step(db,smarts_reaction_workflow,smarts_reaction,reactants_df,workflow_step_index):
@@ -1724,9 +1747,38 @@ def apply_single_unimolecular_reaction_step(db,smarts_reaction_workflow,smarts_r
         
         return reactants_df
 
-def apply_single_bimolecular_reaction_step(smarts_reaction,reactants_list):
+def apply_single_bimolecular_reaction_step(db,smarts_reaction_workflow,smarts_reaction,reactants_df1,reactants_df2,workflow_step_index):
+    pandarallel.initialize(progress_bar=False)
+    
+    df_all_products = pd.DataFrame()
+    df_current_step_products = pd.DataFrame()
+    product_column = f"product_step_{workflow_step_index}"
+    
+    # In order to combinatorialy prepare the products, the loop on the dataframe should be performed on the one containing the lowest number of compounds, otherwise it will fail. So here the length of both dataframes are compared, and actioned in accordance
+            
+    if len(reactants_df1) < len(reactants_df2): 
+        for index, row in reactants_df1.iterrows():
+            current_smiles_1 = row["SMILES"]
+            # Apply the reaction on the first reactant
+            df_current_step_products[f"SMILES_{product_column}"] = reactants_df2["SMILES"].parallel_apply(lambda smiles_2:react_molecule_2_components(current_smiles_1,smiles_2,smarts_reaction))
+            
+            # Concatenate the products from the current step to the final products dataframe
+            df_all_products = pd.concat([df_all_products, df_current_step_products], ignore_index=True)
+    
+    else: # The df2 contains less reactants that df1, so loop over it
+    
+        for index, row in reactants_df2.iterrows():
+            current_smiles_2 = row["SMILES"]
+            
+            # Apply the reaction on the second reactant
+            df_current_step_products[f"SMILES_{product_column}"] = reactants_df1["SMILES"].parallel_apply(lambda smiles_1:react_molecule_2_components(smiles_1,current_smiles_2,smarts_reaction))
+    
+            # Concatenate the products from the current step to the final products dataframe
+            df_all_products = pd.concat([df_all_products, df_current_step_products], ignore_index=True)
     
     print("apply_single_bimolecular_reaction_step")
+    
+    return df_all_products
     
 def react_molecule_1_component(smiles,reaction_smarts):
     
@@ -1741,15 +1793,31 @@ def react_molecule_1_component(smiles,reaction_smarts):
     except Exception as error:
         pass
 
-def retrieve_smiles_reactants_as_df(db,table_name):
+
+def react_molecule_2_components(smiles1, smiles2,reaction_smarts):
+    
+    try:
+        mol1 = Chem.MolFromSmiles(smiles1)
+        mol2 = Chem.MolFromSmiles(smiles2)
+        reaction_mol = AllChem.ReactionFromSmarts(reaction_smarts)
+        product_mol = reaction_mol.RunReactants((mol1,mol2))[0][0]
+        product_smiles = Chem.MolToSmiles(product_mol)
+    
+        return product_smiles
+    
+    except Exception as error:
+        pass
+    
+
+
+def retrieve_smiles_reactants_as_df(db,reactants_list,index=0):
     
     conn= sqlite3.connect(db)
     
-    df = pd.read_sql_query(f"SELECT SMILES FROM {table_name[0]}", conn)
+    df = pd.read_sql_query(f"SELECT SMILES FROM {reactants_list[index]}", conn)
     conn.close()
     
     return df
-    
     
 def store_reaction_results(db, final_products_df, reaction_workflow_id, reactants_lists):
     
