@@ -268,7 +268,7 @@ class ChemSpace:
             print("An error occurred while trying to create the SMARTS reactions workflow. Please check the inputs and try again.")
             print(error)
             
-    def apply_reaction_workflow(self,reaction_workflow_id,reactants_lists):
+    def apply_reaction_workflow(self,reaction_workflow_id,reactants_lists,dry_run=0):
         """
         Will apply a reaction workflow based on a given list of reactants and a reaction workflow ID.
         
@@ -287,21 +287,21 @@ class ChemSpace:
         
         try:
             # Check if the reaction definition is correct
-            smarts_reaction_workflow_list = cs_utils.check_reaction_definition(self.cs_database_file,reaction_workflow_id,reactants_lists)
+            smarts_reaction_workflow_list = cs_utils.check_reaction_definition(self.cs_database_file,reaction_workflow_id,reactants_lists,dry_run)
             
             # Check if reaction results table exists, if not create it
             cs_utils.create_reactions_results_table(self.cs_database_file)    
             
             # Apply the corresponding reaction workflow
-            final_products_df = cs_utils.apply_validated_reaction_workflow(self.cs_database_file,smarts_reaction_workflow_list,reactants_lists)
-                       
-            # Store the final products in the reactions results the database
-            cs_utils.store_reaction_results(self.cs_database_file, final_products_df, reaction_workflow_id, reactants_lists)
+            final_products_df = cs_utils.apply_validated_reaction_workflow(self.cs_database_file,smarts_reaction_workflow_list,reactants_lists,dry_run)
+            
+            if dry_run == 0:
+                # Store the final products in the reactions results the database
+                cs_utils.store_reaction_results(self.cs_database_file, final_products_df, reaction_workflow_id, reactants_lists)
         
         except Exception as error:
             print(error)
             print("An error occurred while trying to apply the reaction workflow. Please check the inputs and try again.")
-            
         
     def copy_table_to_new_name(self, old_table_name, new_table_name):
         """
@@ -321,3 +321,23 @@ class ChemSpace:
         conn.close()
         
         print(f"Successfully copied table '{old_table_name}' to '{new_table_name}'")
+        
+    def save_table_to_csv(self, table_name):
+        """
+        Save the content of a table to a CSV file.
+        """
+        db = f"{self.cs_db_path}/chemspace.db"
+        conn = sqlite3.connect(db)
+        
+        # Read the table into a DataFrame
+        df = pd.read_sql_query(f"SELECT SMILES,name,flag FROM {table_name}", conn)
+        
+        # Set the output path 
+        output_path = self.project.proj_folders_path["chemspace"]["misc"]
+        
+        # Save the DataFrame to a CSV file
+        df.to_csv(f"{output_path}/{table_name}.csv", index=False, header=None)
+        
+        conn.close()
+        
+        print(f"Successfully saved table '{table_name}' to '{output_path}/{table_name}.csv'")

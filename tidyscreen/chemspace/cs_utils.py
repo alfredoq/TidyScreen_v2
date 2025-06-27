@@ -1606,7 +1606,7 @@ def create_reactions_results_table(db):
     conn.commit()
     conn.close()
     
-def check_reaction_definition(db,reaction_workflow_id,reactants_lists):
+def check_reaction_definition(db,reaction_workflow_id,reactants_lists,dry_run):
     
     try: 
         # Retrieve the reaction workflow from the database
@@ -1619,7 +1619,8 @@ def check_reaction_definition(db,reaction_workflow_id,reactants_lists):
     
     except:
         print("Writting failed attempt record to the database...")
-        write_reaction_attempt_record_to_db(db,smarts_reaction_workflow_list,"Error checking the reaction workflow definition vs the reactants lists. Stopping...")
+        if dry_run == 0:
+            write_reaction_attempt_record_to_db(db,smarts_reaction_workflow_list,"Error checking the reaction workflow definition vs the reactants lists. Stopping...")
         sys.exit()
         
 def retrieve_reaction_smarts_definition(db,reaction_workflow_id):
@@ -1660,7 +1661,10 @@ def check_workflows_vs_reactants_lists(smarts_reaction_workflow_list,reactants_l
         print("Error checking the reaction workflow definition vs the reactants lists. Stopping...")
         sys.exit()
 
-def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_lists,remove_mull_inchi_key=True):
+def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_lists,dry_run,remove_mull_inchi_key=False):
+    
+    # Setup Pandarallel for parallel processing
+    pandarallel.initialize(progress_bar=False,verbose=0)
     
     # Create an empty dataframe to store the results of the reaction steps
     final_products_df = pd.DataFrame()
@@ -1672,7 +1676,7 @@ def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_list
         if reaction_molecularity == 1:
             # Check if the reactant for the current step is originated in the last reaction step
             if "->" not in reactants_lists[index][0]:
-                # Retieve the reactants as a dataframe
+                # Retrieve the reactants as a dataframe
                 reactants_df = retrieve_smiles_reactants_as_df(db,reactants_lists[index])
                 
             else:
@@ -1683,46 +1687,87 @@ def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_list
                 reactants_serie = final_products_df[colname] # return a pandas series with the SMILES of the products from the previous step
                 # Convert the resulting series to a DataFrame and assign "SMILES" as column name
                 reactants_df = reactants_serie.to_frame(name='SMILES')
-                
             
             # Apply the unimolecular reaction step 
-            df_current_step_products = apply_single_unimolecular_reaction_step(db,smarts_reaction_workflow,reaction,reactants_df,index)
+            df_current_step_products = apply_single_unimolecular_reaction_step(db,smarts_reaction_workflow,reaction,reactants_df,index,dry_run)
+        
+            # Inform synthesis step data
+            print(f"Reaction step {index}: - Reaction: {reaction} - Number of reactants: {len(reactants_df)} - Number of products: {len(df_current_step_products)} \n")
         
             # Concatenate the products from the current step to the final products dataframe
             final_products_df = pd.concat([final_products_df, df_current_step_products], ignore_index=True)
         
-        
         elif reaction_molecularity == 2:
             # Bimolecular reaction
             
-            # Check if the reactant for the current step is originated in the last reaction step
-            if reactants_lists[index][0] != "->" and reactants_lists[index][1] != "->":
+            # Check if the reactants are not mapped to a previoss reaction step
+            if "->" not in reactants_lists[index][0] and "->" not in reactants_lists[index][1]:
                 
                 # Retieve the reactants as a dataframe
                 reactants_df1 = retrieve_smiles_reactants_as_df(db,reactants_lists[index],index=0)
                 reactants_df2 = retrieve_smiles_reactants_as_df(db,reactants_lists[index],index=1)
-                
-            else:
-                colname = f"SMILES_product_step_{index-1}"
-                
-                reactants_serie = workflow_df[colname] # return a pandas series with the SMILES of the products from the previous step
+            
+            elif "->" in reactants_lists[index][0] and "->" not in reactants_lists[index][1]:
+                # Parse the reactants_lists to get the previous step reference
+                previous_step_reference = abs(int(reactants_lists[index][0].split(":")[-1]))
+                # Prepare the column name to retrieve the products from the previous step
+                colname = f"SMILES_product_step_{index - previous_step_reference}"
+                reactants1_serie = final_products_df[colname] # return a pandas series with the SMILES of the products from the previous step
                 # Convert the resulting series to a DataFrame and assign "SMILES" as column name
-                reactants_df = reactants_serie.to_frame(name='SMILES')
+                reactants_df1 = reactants1_serie.to_frame(name='SMILES')
+                reactants_df2 = retrieve_smiles_reactants_as_df(db,reactants_lists[index],index=1)
+                                
+            elif "->" not in reactants_lists[index][0] and "->" in reactants_lists[index][1]:
+                # Parse the reactants_lists to get the previous step reference
+                previous_step_reference = abs(int(reactants_lists[index][1].split(":")[-1]))
+                # Prepare the column name to retrieve the products from the previous step
+                colname = f"SMILES_product_step_{index - previous_step_reference}"
+                reactants2_serie = final_products_df[colname] # return a pandas series with the SMILES of the products from the previous step
+                # Convert the resulting series to a DataFrame and assign "SMILES" as column name
+                reactants_df1 = retrieve_smiles_reactants_as_df(db,reactants_lists[index],index=0)
+                
+                reactants_df2 = reactants2_serie.to_frame(name='SMILES')
+                
+            elif "->" in reactants_lists[index][0] and "->" in reactants_lists[index][1]:
+                
+                # Parse the reactants_lists to get the previous step reference
+                previous_step_reference1 = abs(int(reactants_lists[index][0].split(":")[-1]))
+                previous_step_reference2 = abs(int(reactants_lists[index][1].split(":")[-1]))
+                
+                print(f"Previous step references: {previous_step_reference1}, {previous_step_reference2}")
+                
+                # Prepare the column name to retrieve the products from the previous step
+                colname1 = f"SMILES_product_step_{index - previous_step_reference1}"
+                colname2 = f"SMILES_product_step_{index - previous_step_reference2}"
+                
+                reactants1_serie = final_products_df[colname1].dropna() # return a pandas series with 
+                reactants2_serie = final_products_df[colname2].dropna() # return a pandas series with 
+                
+                reactants_df1 = reactants1_serie.to_frame(name='SMILES')
+                reactants_df2 = reactants2_serie.to_frame(name='SMILES')
             
             
             # Apply the unimolecular reaction step 
-            workflow_df = apply_single_bimolecular_reaction_step(db,smarts_reaction_workflow,reaction,reactants_df1,reactants_df2,index)
+            df_current_step_products = apply_single_bimolecular_reaction_step(db,smarts_reaction_workflow,reaction,reactants_df1,reactants_df2,index)
             
+            # Inform synthesis step data
+            print(f"React.Step {index}: - Reaction: {reaction} - Reactants1: {len(reactants_df1)} - Reactants2: {len(reactants_df2)} - Products: {len(df_current_step_products)} \n")
+            
+            # Concatenate the products from the current step to the final products dataframe
+            final_products_df = pd.concat([final_products_df, df_current_step_products], ignore_index=True)
         
         else:
             print(f"Reaction {reaction} is not a unimolecular or bimolecular reaction. Stopping...")
-            write_reaction_attempt_record_to_db(db,smarts_reaction_workflow,"Reaction is not a unimolecular or bimolecular reaction. Stopping...")    
+            
+            if dry_run == 0:
+                write_reaction_attempt_record_to_db(db,smarts_reaction_workflow,"Reaction is not a unimolecular or bimolecular reaction. Stopping...")    
+            
             sys.exit()
-        
+       
        
     # Once the reaction workflow is applied, get the final products from the last step
     final_products_df = final_products_df.iloc[:,[-1]].rename(columns={final_products_df.columns[-1]: 'SMILES'})
-    
+           
     # Assign the name ("synth") to the final products
     final_products_df['name'] = 'synth'
     
@@ -1730,7 +1775,6 @@ def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_list
     final_products_df['flag'] = 0
     
     # Compute the inchi_key for the final products
-    pandarallel.initialize(progress_bar=False)
     final_products_df["inchi_key"] = final_products_df.parallel_apply(lambda row: compute_inchi_key_refactored(row,db),axis=1)
     
     if remove_mull_inchi_key:
@@ -1739,21 +1783,23 @@ def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_list
     
     return final_products_df
      
-def apply_single_unimolecular_reaction_step(db,smarts_reaction_workflow,smarts_reaction,reactants_df,workflow_step_index):
+def apply_single_unimolecular_reaction_step(db,smarts_reaction_workflow,smarts_reaction,reactants_df,workflow_step_index,dry_run):
     
     # Apply in a parallelized scheme the corresponding reaction
-    pandarallel.initialize(progress_bar=False)
-    
     df_current_step_products = pd.DataFrame()
     product_column = f"SMILES_product_step_{workflow_step_index}"
     
     df_current_step_products[product_column] = reactants_df['SMILES'].parallel_apply(lambda smiles: react_molecule_1_component(smiles, smarts_reaction))
     
+    # Clean possible None values in the products column
+    df_current_step_products[df_current_step_products[product_column].notnull()]
+    
     # Check if the reaction was successful
     if df_current_step_products[product_column].isnull().all():
         print(f"All reactants in the step {workflow_step_index} failed to react. Stopping...")
         
-        write_reaction_attempt_record_to_db(db,smarts_reaction_workflow,"Reaction was not succesfull. Stopping...")
+        if dry_run == 0:
+            write_reaction_attempt_record_to_db(db,smarts_reaction_workflow,"Reaction was not succesfull. Stopping...")
         
         sys.exit()
     
@@ -1764,7 +1810,6 @@ def apply_single_unimolecular_reaction_step(db,smarts_reaction_workflow,smarts_r
         return df_current_step_products
 
 def apply_single_bimolecular_reaction_step(db,smarts_reaction_workflow,smarts_reaction,reactants_df1,reactants_df2,workflow_step_index):
-    pandarallel.initialize(progress_bar=False)
     df_all_products = pd.DataFrame()
     df_current_step_products = pd.DataFrame()
     product_column = f"product_step_{workflow_step_index}"
@@ -1839,6 +1884,7 @@ def store_reaction_results(db, final_products_df, reaction_workflow_id, reactant
     
 
  # Generate a reaction attempt record in the database
+ 
 def write_reaction_attempt_record_to_db(db,reaction_workflow_id,message="Reaction attempt successful"):
     
     conn = sqlite3.connect(db)
