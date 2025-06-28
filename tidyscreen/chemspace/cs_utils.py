@@ -26,7 +26,6 @@ from espaloma_charge import charge
 from rdkit.Chem import Descriptors
 import json
 
-
 def check_smiles(smiles):
     
     mol = Chem.MolFromSmiles(smiles)
@@ -1684,7 +1683,7 @@ def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_list
                 previous_step_reference = abs(int(reactants_lists[index][0].split(":")[-1]))
                 # Prepare the column name to retrieve the products from the previous step
                 colname = f"SMILES_product_step_{index - previous_step_reference}"
-                reactants_serie = final_products_df[colname] # return a pandas series with the SMILES of the products from the previous step
+                reactants_serie = final_products_df[colname].dropna() # return a pandas series with the SMILES of the products from the previous step
                 # Convert the resulting series to a DataFrame and assign "SMILES" as column name
                 reactants_df = reactants_serie.to_frame(name='SMILES')
             
@@ -1712,7 +1711,7 @@ def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_list
                 previous_step_reference = abs(int(reactants_lists[index][0].split(":")[-1]))
                 # Prepare the column name to retrieve the products from the previous step
                 colname = f"SMILES_product_step_{index - previous_step_reference}"
-                reactants1_serie = final_products_df[colname] # return a pandas series with the SMILES of the products from the previous step
+                reactants1_serie = final_products_df[colname].dropna() # return a pandas series with the SMILES of the products from the previous step
                 # Convert the resulting series to a DataFrame and assign "SMILES" as column name
                 reactants_df1 = reactants1_serie.to_frame(name='SMILES')
                 reactants_df2 = retrieve_smiles_reactants_as_df(db,reactants_lists[index],index=1)
@@ -1722,7 +1721,7 @@ def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_list
                 previous_step_reference = abs(int(reactants_lists[index][1].split(":")[-1]))
                 # Prepare the column name to retrieve the products from the previous step
                 colname = f"SMILES_product_step_{index - previous_step_reference}"
-                reactants2_serie = final_products_df[colname] # return a pandas series with the SMILES of the products from the previous step
+                reactants2_serie = final_products_df[colname].dropna() # return a pandas series with the SMILES of the products from the previous step
                 # Convert the resulting series to a DataFrame and assign "SMILES" as column name
                 reactants_df1 = retrieve_smiles_reactants_as_df(db,reactants_lists[index],index=0)
                 
