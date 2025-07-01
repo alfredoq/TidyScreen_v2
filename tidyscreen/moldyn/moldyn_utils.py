@@ -317,11 +317,11 @@ def perform_minimization(output_path,ligand_prefix,solvent,inform=1):
             print(f"Runnning 'min2' for ligand: '{ligand_prefix}'")
         subprocess.run(command, shell=True, capture_output=True, text=True)
     
-def write_mmgbsa_input(output_path):
+def write_mmgbsa_input(output_path,interval=100):
     with open(f'{output_path}/mmgbsa.in','w') as mmgbsa_file:
         mmgbsa_file.write("Per-residue GB and PB decomposition \n")
         mmgbsa_file.write("&general \n")
-        mmgbsa_file.write("startframe = 1, interval = 100, verbose=1, \n")
+        mmgbsa_file.write(f"startframe = 1, interval = {interval}, verbose=1, \n")
         mmgbsa_file.write("/ \n")
         mmgbsa_file.write("&gb \n")
         mmgbsa_file.write("igb=5, saltcon=0.100, \n")
@@ -360,7 +360,6 @@ def apply_ante_MMPBSA(output_path):
     subprocess.run(command, shell=True, capture_output=True, text=True)
 
 def compute_MMPBSA(output_path,traj_input):
-    
     
     # Check if the MMPBSA.py script is available in the conda environment, if so delete it so as to use the system one
     conda_prefix = os.environ.get('CONDA_PREFIX')
@@ -556,6 +555,31 @@ def parse_receptor_fields(receptor_filename, main_fingerprints_folder):
     
     file.close()
     
-    
-    
     return resname_field,resnumber_field,chain_name_field
+
+
+def prepare_MD_folder_for_MMGBSA(assay_folder):
+    # Prepare the corresponding .prmtop and .inpcrd files for MMGBSA
+    apply_ante_MMPBSA(assay_folder)
+    write_mmgbsa_input(assay_folder)
+    write_MMGBSA_computation_script(assay_folder)
+    
+def write_MMGBSA_computation_script(assay_folder,traj_input='prod_strip.nc'):
+    
+    # Get the MMPBSA.py path
+    MMPBSA_path = shutil.which('MMPBSA.py')
+    
+    # Generate the command to run MMPBSA
+    command1 = f'{MMPBSA_path} -i {assay_folder}/mmgbsa.in -o {assay_folder}/mmgbsa.out -do {assay_folder}/mmgbsa_DECOMP.out -cp {assay_folder}/complex_MMGBSA.prmtop -rp {assay_folder}/receptor_MMGBSA.prmtop -lp {assay_folder}/ligand_MMGBSA.prmtop -y {assay_folder}/{traj_input}'
+    
+    # Generate the command to clean MMPBSA
+    command2 = f'{MMPBSA_path} -i {assay_folder}/mmgbsa.in -o {assay_folder}/mmgbsa.out -do {assay_folder}/mmgbsa_DECOMP.out -cp {assay_folder}/complex_MMGBSA.prmtop -rp {assay_folder}/receptor_MMGBSA.prmtop -lp {assay_folder}/ligand_MMGBSA.prmtop -y {assay_folder}/{traj_input} --clean'
+    
+    with open(f'{assay_folder}/mmgbsa_execution.sh','w') as exec_file:
+        exec_file.write("#!/bin/bash \n")
+        exec_file.write(f"{command1}\n")
+        exec_file.write(f"{command2}\n")
+    
+    exec_file.close()
+    
+    print(f"Finished preparing MMGBSA execution script in: \n \t {assay_folder}")

@@ -3,6 +3,7 @@ warnings.filterwarnings("ignore")
 from tidyscreen.moldyn import moldyn_utils as moldyn_utils
 from tidyscreen.docking_analysis import docking_analysis_utils as docking_analysis_utils
 import sys
+import os
 
 
 class MolDyn:
@@ -62,5 +63,29 @@ class MolDyn:
         
         except Exception as error:
             print("Error creating MD assays. Stopping...")
+            print(error)
+            sys.exit()
+            
+    def analyze_trajectory(self,assay_id):
+        """
+        Analyze the trajectory of a given MD assay.
+        """
+        try:
+            # Retrieve the assay folder
+            assay_folder = f"{self.mdyn_path['md_assays']}/assay_{assay_id}"
+            
+            
+            # Check if the folder exists
+            if os.path.isdir(assay_folder):
+                pass
+            else:
+                print(f"Assay folder {assay_folder} does not exist. Stopping...")
+                sys.exit()
+            
+            # Analyze the trajectory
+            moldyn_utils.prepare_MD_folder_for_MMGBSA(assay_folder)
+            
+        except Exception as error:
+            print("Error analyzing trajectory. Stopping...")
             print(error)
             sys.exit()
