@@ -557,7 +557,6 @@ def parse_receptor_fields(receptor_filename, main_fingerprints_folder):
     
     return resname_field,resnumber_field,chain_name_field
 
-
 def prepare_MD_folder_for_MMGBSA(assay_folder):
     # Prepare the corresponding .prmtop and .inpcrd files for MMGBSA
     apply_ante_MMPBSA(assay_folder)
@@ -583,3 +582,32 @@ def write_MMGBSA_computation_script(assay_folder,traj_input='prod_strip.nc'):
     exec_file.close()
     
     print(f"Finished preparing MMGBSA execution script in: \n \t {assay_folder}")
+    
+def print_mmgbsa_info(assay_folder):
+    
+    print("Assay folder: ", assay_folder)
+    
+    with open(f"{assay_folder}/mmgbsa.out",'r') as mmgbsa_file:
+        activate = 0
+        for line in mmgbsa_file:
+            if "Differences (Complex - Receptor - Ligand):" in line:
+                activate = 1
+    
+            elif activate == 1:
+                line_split = line.split()
+                if "VDWAALS" in line:
+                    print(f"VDWAALS: {line_split[1]}")
+                elif "EEL" in line:
+                    print(f"EEL: {line_split[1]}")
+                elif "EGB" in line:
+                    print(f"EGB: {line_split[1]}")
+                elif "ESURF" in line:
+                    print(f"ESURF: {line_split[1]}")
+                elif "DELTA G gas" in line:
+                    print(f"DELTA G gas: {line_split[3]}")
+                elif "DELTA G solv" in line:
+                    print(f"DELTA G solv: {line_split[3]}")
+                elif "DELTA TOTAL" in line:
+                    print(f"DELTA G total: {line_split[2]}")
+                
+                

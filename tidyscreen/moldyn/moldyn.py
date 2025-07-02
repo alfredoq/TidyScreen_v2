@@ -5,7 +5,6 @@ from tidyscreen.docking_analysis import docking_analysis_utils as docking_analys
 import sys
 import os
 
-
 class MolDyn:
     
     def __init__(self, project):
@@ -74,7 +73,6 @@ class MolDyn:
             # Retrieve the assay folder
             assay_folder = f"{self.mdyn_path['md_assays']}/assay_{assay_id}"
             
-            
             # Check if the folder exists
             if os.path.isdir(assay_folder):
                 pass
@@ -89,3 +87,24 @@ class MolDyn:
             print("Error analyzing trajectory. Stopping...")
             print(error)
             sys.exit()
+            
+    def show_mmgbsa_results(self,assay_id):
+        """
+        Show the MMGBSA results of a given MD assay.
+        """
+        try:
+            # Retrieve the assay folder
+            assay_folder = f"{self.mdyn_path['md_assays']}/assay_{assay_id}"
+            
+            # Check if the folder exists
+            if os.path.isdir(assay_folder):
+                moldyn_utils.print_mmgbsa_info(assay_folder)
+            
+            else:
+                print(f"Assay folder {assay_folder} does not exist. Stopping...")
+                sys.exit()
+        except Exception as error:
+            print("Error showing MMGBSA results. Stopping...")
+            print(error)
+            sys.exit()
+                
