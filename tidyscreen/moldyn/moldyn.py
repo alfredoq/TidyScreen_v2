@@ -65,7 +65,7 @@ class MolDyn:
             print(error)
             sys.exit()
             
-    def analyze_trajectory(self,assay_id):
+    def analyze_trajectory(self,assay_id,ligname="UNL"):
         """
         Analyze the trajectory of a given MD assay.
         """
@@ -81,7 +81,7 @@ class MolDyn:
                 sys.exit()
             
             # Analyze the trajectory
-            moldyn_utils.prepare_MD_folder_for_MMGBSA(assay_folder)
+            moldyn_utils.prepare_MD_folder_for_MMGBSA(assay_folder,ligname)
             
         except Exception as error:
             print("Error analyzing trajectory. Stopping...")
