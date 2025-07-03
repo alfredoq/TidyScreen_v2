@@ -351,20 +351,16 @@ def strip_waters(output_path,traj_file,prmtop_file):
     command = f'{cpptraj_path} -i {output_path}/cpptraj_strip_wat.in' 
     subprocess.run(command, shell=True, capture_output=True, text=True)
     
-def apply_ante_MMPBSA(output_path,ligname):
+def apply_ante_MMPBSA(output_path,ligname,amberhome):
     # Determine the ante_MMPBSA path
     anteMMPBSA_path = shutil.which('ante-MMPBSA.py')
-    # Get $AMBERHOME environment variable
-    amberhome = os.environ.get('AMBERHOME')
-    print(amberhome)
+    # Set $AMBERHOME environment variable
+    os.environ["AMBERHOME"] = amberhome
     # Run ante_MMPBSA computation
     command = f'{anteMMPBSA_path} -p {output_path}/complex.prmtop -s :WAT,Na+,Cl- -c {output_path}/complex_MMGBSA.prmtop -r {output_path}/receptor_MMGBSA.prmtop -l {output_path}/ligand_MMGBSA.prmtop -n :{ligname}' 
     print(f"Computing ante_MMPBSA")
     
-    print(command)
-    
-    
-    subprocess.run(command, shell=True, capture_output=False, text=True)
+    subprocess.run(command, shell=True, capture_output=True, text=True)
 
 def compute_MMPBSA(output_path,traj_input):
     
@@ -564,9 +560,9 @@ def parse_receptor_fields(receptor_filename, main_fingerprints_folder):
     
     return resname_field,resnumber_field,chain_name_field
 
-def prepare_MD_folder_for_MMGBSA(assay_folder,ligname):
+def prepare_MD_folder_for_MMGBSA(assay_folder,ligname,amberhome):
     # Prepare the corresponding .prmtop and .inpcrd files for MMGBSA
-    apply_ante_MMPBSA(assay_folder,ligname)
+    apply_ante_MMPBSA(assay_folder,ligname,amberhome)
     write_mmgbsa_input(assay_folder)
     write_MMGBSA_computation_script(assay_folder)
     

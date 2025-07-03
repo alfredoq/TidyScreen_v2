@@ -7,11 +7,18 @@ import os
 
 class MolDyn:
     
-    def __init__(self, project):
+    def __init__(self, project,amberhome=None):
         self.project = project
         self.mdyn_path = self.project.proj_folders_path['dynamics']
         self.docking_path = self.project.proj_folders_path["docking"]
         self.docking_assays_path = self.project.proj_folders_path["docking"]["docking_assays"]
+        if amberhome is None:
+            self.amberhome = input("Please, input the AMBERHOME path: ")
+            if self.amberhome is None:
+                print("Error: AMBERHOME environment variable is not set.")
+                sys.exit()
+        else:
+            self.amberhome = amberhome
     
     def create_md_assay(self,docking_assay_id,docking_pose_id):
         
@@ -71,6 +78,7 @@ class MolDyn:
         """
         try:
             # Retrieve the assay folder
+            amberhome = self.amberhome
             assay_folder = f"{self.mdyn_path['md_assays']}/assay_{assay_id}"
             
             # Check if the folder exists
@@ -81,7 +89,7 @@ class MolDyn:
                 sys.exit()
             
             # Analyze the trajectory
-            moldyn_utils.prepare_MD_folder_for_MMGBSA(assay_folder,ligname)
+            moldyn_utils.prepare_MD_folder_for_MMGBSA(assay_folder,ligname,amberhome)
             
         except Exception as error:
             print("Error analyzing trajectory. Stopping...")

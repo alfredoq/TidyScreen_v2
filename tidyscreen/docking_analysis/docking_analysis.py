@@ -5,17 +5,26 @@ from tidyscreen.moldyn import moldyn_utils as md_utils
 from tidyscreen.GeneralFunctions import general_functions as general_functions
 import time
 import shutil
-
+import sys
 
 class DockingAnalysis:
     
-    def __init__(self, project):
+    def __init__(self, project,amberhome=None):
         self.project = project
         self.docking_assays_path = self.project.proj_folders_path["docking"]["docking_assays"]
         self.docking_registers_path = self.project.proj_folders_path["docking"]["docking_registers"]    
         self.docking_params_path = self.project.proj_folders_path["docking"]["params"]    
         self.receptor_models_path = self.project.proj_folders_path["docking"]["receptors"]
         self.ligands_db = self.project.proj_folders_path["chemspace"]['processed_data'] + "/chemspace.db"
+
+        if amberhome is None:
+            self.amberhome = input("Please, input the AMBERHOME path: ")
+            if self.amberhome is None:
+                print("Error: AMBERHOME environment variable is not set.")
+                sys.exit()
+        else:
+            self.amberhome = amberhome
+    
     
     def process_docking_assay(self,assay_id):
         registries_db = f"{self.docking_registers_path}/docking_registries.db"
@@ -41,9 +50,14 @@ class DockingAnalysis:
     
     
     ### Compute fingerprints using MMPBSA on target folder
+        
+        # Set the AMBERHOME environment variable
+        amberhome = self.amberhome
+        
         # Compute the MMPBSA based per-residue interaction fingerprint
         main_fingerprints_folder = f"{assay_folder}/fingerprints_analyses"
-        prmtop_file, crd_file, tleap_vs_cristal_reference_dict,mmpbsa_decomp_csv_output = docking_analysis_utils.compute_fingerprints(output_path,main_fingerprints_folder,complex_pdb_file,receptor_filename,solvent,min_steps,iteration,ligname)
+        prmtop_file, crd_file, tleap_vs_cristal_reference_dict,mmpbsa_decomp_csv_output = docking_analysis_utils.compute_fingerprints(output_path,main_fingerprints_folder,complex_pdb_file,receptor_filename,solvent,min_steps,iteration,ligname,amberhome)
+        
         
     ### Compute ProLIFfingerprints for minimized pose ###
         interactions_list = ['Anionic','CationPi','Cationic','EdgeToFace','FaceToFace','HBAcceptor','HBDonor','Hydrophobic','MetalAcceptor','MetalDonor','PiCation','PiStacking','VdWContact','XBAcceptor','XBDonor']
