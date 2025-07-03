@@ -282,7 +282,7 @@ def retrieve_table_name_from_assay_id(self,assay_id):
     
     return table_name
     
-def compute_fingerprints(output_path,main_fingerprints_folder,complex_pdb_file,receptor_filename,solvent,min_steps,iteration,ligname,amberhome):
+def compute_fingerprints(output_path,main_fingerprints_folder,complex_pdb_file,receptor_filename,solvent,min_steps,iteration,ligresname,amberhome):
     # From the complex filename prepare the corresponding files naming:
     ligand_prefix = complex_pdb_file.split('/')[-1].split('_')[1]
     ligand_mol2_ref_file = f'{ligand_prefix}_gaff.mol2'
@@ -296,8 +296,9 @@ def compute_fingerprints(output_path,main_fingerprints_folder,complex_pdb_file,r
     # Create the MMGBSA input file
     md_utils.write_mmgbsa_input(output_path)
     # Use ante ante-MMPBSA.py to create the files required for computation
-    md_utils.apply_ante_MMPBSA(output_path,ligname,amberhome)
+    md_utils.apply_ante_MMPBSA(output_path,ligresname,amberhome)
     # Strip solvent (if explicit model was used) and/or compute the MMPBSA 
+    
     if solvent == "explicit":
         # Strip waters from min2.crd to
         md_utils.strip_waters(assay_folder,"min2.crd","complex.prmtop")

@@ -38,7 +38,7 @@ class DockingAnalysis:
         # Extract 1 pdb pose per cluster
         docking_analysis_utils.extract_1_pdb_per_cluster(assay_folder,results_db_file)
     
-    def compute_fingerprints_for_docked_pose(self,assay_id,results_pose_id,clean_files=1,clean_folder=1,solvent="implicit",min_steps=5000,store_docked_poses=1, iteration=1, ligname="UNL"):
+    def compute_fingerprints_for_docked_pose(self,assay_id,results_pose_id,clean_files=1,clean_folder=1,solvent="implicit",min_steps=5000,store_docked_poses=1, iteration=1, ligresname="UNL"):
     ### Start to log the time
         start_time = time.time()
     ### Create a custom folder for the analysis and copy/generate relevant files
@@ -55,8 +55,13 @@ class DockingAnalysis:
         amberhome = self.amberhome
         
         # Compute the MMPBSA based per-residue interaction fingerprint
-        main_fingerprints_folder = f"{assay_folder}/fingerprints_analyses"
-        prmtop_file, crd_file, tleap_vs_cristal_reference_dict,mmpbsa_decomp_csv_output = docking_analysis_utils.compute_fingerprints(output_path,main_fingerprints_folder,complex_pdb_file,receptor_filename,solvent,min_steps,iteration,ligname,amberhome)
+        
+        try:
+            main_fingerprints_folder = f"{assay_folder}/fingerprints_analyses"
+            prmtop_file, crd_file, tleap_vs_cristal_reference_dict,mmpbsa_decomp_csv_output = docking_analysis_utils.compute_fingerprints(output_path,main_fingerprints_folder,complex_pdb_file,receptor_filename,solvent,min_steps,iteration,ligresname,amberhome)
+        except Exception as e:
+            print(f"Error during MMPBSA fingerprint computation: {e}")
+            sys.exit()
         
         
     ### Compute ProLIFfingerprints for minimized pose ###
