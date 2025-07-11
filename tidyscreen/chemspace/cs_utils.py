@@ -1313,10 +1313,19 @@ def insert_smarts_filter_in_table(db,smarts_filter,description):
     cursor = conn.cursor()
     
     # Create a new table for the SMARTS filters if it does not exist
-    cursor.execute(f"CREATE TABLE IF NOT EXISTS chem_filters (id INTEGER PRIMARY KEY AUTOINCREMENT, smarts TEXT, description TEXT)")
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS chem_filters (Filter_id INTEGER PRIMARY KEY AUTOINCREMENT, smarts TEXT, description TEXT)")
+    
+    # Get the last record of 'Filter_id' in the SMARTS filters table
+    cursor.execute("SELECT Filter_id FROM chem_filters ORDER BY Filter_id DESC LIMIT 1")
+    result = cursor.fetchone()
+    
+    if result is None:
+        last_id = 0
+    else:
+        last_id = result[0]  
     
     # Insert the SMARTS filter into the table
-    cursor.execute("INSERT INTO chem_filters (smarts, description) VALUES (?,?)", (smarts_filter,description,))
+    cursor.execute("INSERT INTO chem_filters (Filter_id, Filter_Name, SMARTS) VALUES (?,?,?)", (last_id+1,description,smarts_filter,))
     
     conn.commit()
     conn.close()
