@@ -1512,8 +1512,12 @@ def list_available_smarts_reactions(db):
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
     
-    cursor.execute("SELECT * FROM smarts_reactions")
-    rows = cursor.fetchall()
+    try: 
+        cursor.execute("SELECT * FROM smarts_reactions")
+        rows = cursor.fetchall()
+    except:
+        print("SMARTS reactions table does not exist yet. Add reactions to the database first.")
+        sys.exit()
     
     if not rows:
         print("No SMARTS reactions found in the database.")
