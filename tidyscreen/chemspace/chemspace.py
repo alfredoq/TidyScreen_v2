@@ -163,9 +163,13 @@ class ChemSpace:
         
         general_functions.save_df_to_db(db, df, table_name)
         
-    def subset_table_by_properties(self,table_name,props_filter,):
+    def subset_table_by_properties(self,table_name,props_filter):
         """
         Will subset the source table by a given property and store the result in the destination table
+        
+        props_filter: is a list 
+        
+        
         """
         db = f"{self.cs_db_path}/chemspace.db"
         try:
