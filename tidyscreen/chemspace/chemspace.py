@@ -194,6 +194,13 @@ class ChemSpace:
         cs_utils.store_smarts_filters_workflow(db_workflow,filters_instances_dict,filters_names_list,smarts_filters_dict)
         print(f"Succesfully created SMARTS filters workflow with filters: '{filters_instances_dict}'")
     
+    def list_available_smarts_filters_workflows(self):
+        """
+        Will list all available SMARTS filters workflows availbale in the project
+        """
+        db = self.cs_database_file
+        cs_utils.list_available_filters_workflows(db)
+    
     def subset_table_by_smarts_workflow(self,table_name,workflow_id):
         try:
             db = f"{self.cs_db_path}/chemspace.db"

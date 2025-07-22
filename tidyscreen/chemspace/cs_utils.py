@@ -1505,6 +1505,26 @@ def list_available_smarts_filters(db):
     for row in rows:
         print(f"Filter_id: {row[0]}, Filter_Name: {row[1]}, SMARTS: {row[2]}")
 
+
+def list_available_filters_workflows(db):
+    """
+    List all available SMARTS filters workflows available in the database.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM smarts_filters_workflow")
+    rows = cursor.fetchall()
+    
+    if not rows:
+        print("No SMARTS filters workflows found in the database.")
+        return []
+    
+    print("Available SMARTS filters workflows:")
+    for row in rows:
+        print(f"Workflow_id: {row[0]}, Filter_Specs: {row[3]}, Description: {row[4]} \n")
+
+
 def list_available_smarts_reactions(db):
     """
     List all available SMARTS filters in the database.
