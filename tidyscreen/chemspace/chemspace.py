@@ -154,11 +154,14 @@ class ChemSpace:
         db = f"{self.cs_db_path}/chemspace.db"
         # Read the table into a dataframe
         df = pd.read_sql_query(f"SELECT * FROM {table_name}", tidyscreen.connect_to_db(db))
-        # Create the columns in the table to store the properties if they do not exists
-        cs_utils.create_properties_columns(db, table_name, properties_list)
-        # # Compute the properties using pandarallel
+        # Initialize pandarallel for parallel processing
         pandarallel.initialize(progress_bar=True)
-        df.parallel_apply(lambda row: cs_utils.compute_properties(row, db, table_name,properties_list), axis=1)
+        # Compute the properties for each ligand in the table
+        for property in properties_list:
+            print(f"\t Computing property: {property} \n")
+            df[property] = df.parallel_apply(lambda row: cs_utils.compute_properties(row, property), axis=1)
+        
+        general_functions.save_df_to_db(db, df, table_name)
         
     def subset_table_by_properties(self,table_name,props_filter,):
         """

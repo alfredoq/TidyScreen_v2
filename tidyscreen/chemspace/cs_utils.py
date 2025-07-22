@@ -1196,30 +1196,19 @@ def create_properties_columns(db, table_name, properties_list):
     
     conn.commit()
 
-def compute_properties(row, db, table_name, properties_list):
-    # Create an empty dataframe to store the properties
-    prop_df = pd.DataFrame(columns=properties_list)
+def compute_properties(row,property):
     # Create the properties columns if they do not exist in the target table
     mol = Chem.MolFromSmiles(row["SMILES"])
-    if mol is None:
-        props_list = [None] * len(properties_list)
     
-    props_list =  [getattr(Descriptors, prop)(mol) for prop in properties_list]
+    if mol is not None:
+        property_value = getattr(Descriptors, property)(mol)
+        #print(property_value)
+        
+        return property_value
     
-    # Store the properties in database 
-    conn = sqlite3.connect(db)
-    cursor = conn.cursor()
+    else:
+        pass
     
-    # Properties columns to update
-    set_clause = ', '.join([f"{prop} = ?" for prop in properties_list])
-    
-    try: 
-        cursor.execute(f"UPDATE {table_name} SET {set_clause} WHERE id = ?",(*props_list, row["id"]))
-        conn.commit()
-    except Exception as error:
-        print(f"Error updating properties for SMILES: {row['SMILES']}")
-        print(error)    
-
 def write_subset_record_to_db(db,table_name,type,prop_filter,description):
     """
     Write a subset of records to the database based on a property filter.
@@ -1505,7 +1494,6 @@ def list_available_smarts_filters(db):
     for row in rows:
         print(f"Filter_id: {row[0]}, Filter_Name: {row[1]}, SMARTS: {row[2]}")
 
-
 def list_available_filters_workflows(db):
     """
     List all available SMARTS filters workflows available in the database.
@@ -1523,7 +1511,6 @@ def list_available_filters_workflows(db):
     print("Available SMARTS filters workflows:")
     for row in rows:
         print(f"Workflow_id: {row[0]}, Filter_Specs: {row[3]}, Description: {row[4]} \n")
-
 
 def list_available_smarts_reactions(db):
     """
@@ -1946,5 +1933,4 @@ def write_reaction_attempt_record_to_db(db,reaction_workflow_id,message="Reactio
     print(f"Reaction attempt record written to the database with id: {last_id + 1}")
     
     return table_name
-    
     
