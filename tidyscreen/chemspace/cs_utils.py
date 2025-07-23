@@ -1680,7 +1680,7 @@ def check_workflows_vs_reactants_lists(smarts_reaction_workflow_list,reactants_l
         print("Error checking the reaction workflow definition vs the reactants lists. Stopping...")
         sys.exit()
 
-def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_lists,dry_run,remove_mull_inchi_key=False):
+def apply_validated_reaction_workflow(db,smarts_reaction_workflow,reactants_lists,dry_run,remove_mull_inchi_key=True):
     
     # Setup Pandarallel for parallel processing
     pandarallel.initialize(progress_bar=False,verbose=0)
