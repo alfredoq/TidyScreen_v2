@@ -29,9 +29,10 @@ class ChemSpace:
         Will read a .csv file and store it into de corresponding database
         """
         # Read the csv file and check if the first element is a valid SMILES        
-        target_table_name, df, first_element = general_functions.csv_reader(file) 
+        target_table_name, df, first_element, second_element = general_functions.csv_reader(file) 
+        
         # Check if the first element is a valid SMILES - Will stop the process if not
-        general_functions.check_smiles(first_element)
+        df = general_functions.check_smiles(df,first_element,second_element)
         # Make all the processing on the generated df (sanitization, enumeration, inchi key calculation)
         df = cs_utils.process_input_df(df,self.cs_database_file,file,stereo_enum)
         # Store the final df into de database
