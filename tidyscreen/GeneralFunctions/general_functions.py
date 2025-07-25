@@ -208,13 +208,17 @@ def csv_reader(file):
     target_table_name = file.split("/")[-1].replace(".csv","").replace(".smi","").replace("-", "_") 
     
     df = pd.read_csv(file,header=None,index_col=False)
-    #df = pd.read_csv(file,header=None)
-    #df = df.reset_index()
     
-    # First row, second column (i.e. the first SMILES)
+    # First row, first column (i.e. the first SMILES)
     first_element = df.iloc[0, 0]  
     
-    return target_table_name, df, first_element
+    # First row, first column (i.e. the first SMILES)
+    second_element = df.iloc[1, 0]
+    
+    print(first_element)
+    print(second_element)
+    
+    return target_table_name, df, first_element, second_element
 
 def check_table_presence(conn,table_name):
     "Will return 1 if exists, otherwise returns 0"
@@ -251,19 +255,21 @@ def save_df_to_db(db,df,table_name):
     except Exception as error:
         print(error)
         
-def check_smiles(smiles):
+def check_smiles(df,smiles1,smiles2):
     
     try:     
-        mol = Chem.MolFromSmiles(smiles)
+        mol = Chem.MolFromSmiles(smiles1)
 
         if mol is None:
-            print(f"Problem reading SMILES columns - Example {smiles} \n Stopping...")
-            sys.exit()
-        else:
-            print("SMILES column valid...")
+            mol = Chem.MolFromSmiles(smiles2)
             
+            # Drop the first row since it is assumed it is a title
+            df = df.iloc[1:].reset_index(drop=True)
+            
+        return df
+    
     except:
-        print(f"Problem reading SMILES columns - Example {smiles} \n Stopping...")
+        print(f"Problem reading SMILES columns - Example {smiles2} \n Stopping...")
         sys.exit()
         
 def write_failed_smiles_to_db(smiles,db,file,cause):

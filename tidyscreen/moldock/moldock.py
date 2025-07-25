@@ -22,12 +22,30 @@ class MolDock:
         # Will check if the receptor model is already stored by analyzing the folder name 
         ### Function
         moldock_utils.check_existing_rec_model(db,folder)
-        print("LLEGO")
         # Will generate a .tar file containing all the receptor information
         tar_filename, receptor_blob = moldock_utils.tar_folder(folder,file_prefix)
         # Store the receptor model in the corresponding 'receptors' db
         moldock_utils.store_receptor_model(db,tar_filename, receptor_blob)
     
+        print("Successfully stored the receptor model in the database.")
+
+    def tag_obsolete_receptor(self, id_receptor_model):
+        """
+        Will tag a receptor model as obsolete in the corresponding database
+        """
+        db = f"{self.receptor_models_path}/receptors.db"
+        
+        response = input(f"Are you sure you want to tag the receptor model with id: ' {id_receptor_model}' as obsolete? (y/n): ")
+        
+        moldock_utils.check_description_tag(db,id_receptor_model,tag="#OBSOLETE#")
+
+
+        if response.lower() == 'y':
+            moldock_utils.tag_receptor_model_as_obsolete(db,id_receptor_model)
+        else:
+            print("Operation cancelled. The receptor model has not been tagged as obsolete.")
+            sys.exit()
+
     def create_docking_params_set(self):
         docking_params_db = f"{self.docking_params_path}/docking_params.db"
         # Will check if the default docking params set has already been created. If exists, returns without further action, otherwise will create the default parameters continue.
@@ -43,6 +61,10 @@ class MolDock:
             sys.exit()   
 
     def dock_table(self,table_name,id_receptor_model,id_docking_params):
+
+        # Check if the receptor model is valid
+        moldock_utils.check_description_tag(f"{self.receptor_models_path}/receptors.db",id_receptor_model,tag="#OBSOLETE#")
+
         # Will append a docking registry to the corresponding 'db' and return the assay_id
         registries_db = f"{self.docking_registers_path}/docking_registries.db"
         assay_id = moldock_utils.append_docking_registry(registries_db,table_name,id_receptor_model,id_docking_params)

@@ -29,9 +29,10 @@ class ChemSpace:
         Will read a .csv file and store it into de corresponding database
         """
         # Read the csv file and check if the first element is a valid SMILES        
-        target_table_name, df, first_element = general_functions.csv_reader(file) 
+        target_table_name, df, first_element, second_element = general_functions.csv_reader(file) 
+        
         # Check if the first element is a valid SMILES - Will stop the process if not
-        general_functions.check_smiles(first_element)
+        df = general_functions.check_smiles(df,first_element,second_element)
         # Make all the processing on the generated df (sanitization, enumeration, inchi key calculation)
         df = cs_utils.process_input_df(df,self.cs_database_file,file,stereo_enum)
         # Store the final df into de database
@@ -46,14 +47,14 @@ class ChemSpace:
     def delete_table(self,table_name):
         cs_utils.delete_ligands_table(f"{self.cs_db_path}/chemspace.db",table_name)
 
-    def depict_ligand_table(self,table_name):
+    def depict_ligand_table(self,table_name,max_mols_ppage=25,limit=0,random=False):
         db = f"{self.cs_db_path}/chemspace.db"
         #print(self.project.proj_folders_path["chemspace"]["raw_data"])
         output_path = f"{self.project.proj_folders_path['chemspace']['misc']}/{table_name}_depict"
         # Check if the folder is already present
         cs_utils.check_folder_presence(output_path,create=1)
         # call the depiction function
-        cs_utils.depict_ligands_table(db,table_name,output_path)
+        cs_utils.depict_ligands_table(db,table_name,output_path,max_mols_ppage,limit,random)
         
         print(f"Successfully depicted ligands in table: '{output_path}'")
 
@@ -154,15 +155,22 @@ class ChemSpace:
         db = f"{self.cs_db_path}/chemspace.db"
         # Read the table into a dataframe
         df = pd.read_sql_query(f"SELECT * FROM {table_name}", tidyscreen.connect_to_db(db))
-        # Create the columns in the table to store the properties if they do not exists
-        cs_utils.create_properties_columns(db, table_name, properties_list)
-        # # Compute the properties using pandarallel
+        # Initialize pandarallel for parallel processing
         pandarallel.initialize(progress_bar=True)
-        df.parallel_apply(lambda row: cs_utils.compute_properties(row, db, table_name,properties_list), axis=1)
+        # Compute the properties for each ligand in the table
+        for property in properties_list:
+            print(f"\t Computing property: {property} \n")
+            df[property] = df.parallel_apply(lambda row: cs_utils.compute_properties(row, property), axis=1)
         
-    def subset_table_by_properties(self,table_name,props_filter,):
+        general_functions.save_df_to_db(db, df, table_name)
+        
+    def subset_table_by_properties(self,table_name,props_filter):
         """
         Will subset the source table by a given property and store the result in the destination table
+        
+        props_filter: is a list 
+        
+        
         """
         db = f"{self.cs_db_path}/chemspace.db"
         try:
@@ -194,6 +202,13 @@ class ChemSpace:
         cs_utils.store_smarts_filters_workflow(db_workflow,filters_instances_dict,filters_names_list,smarts_filters_dict)
         print(f"Succesfully created SMARTS filters workflow with filters: '{filters_instances_dict}'")
     
+    def list_available_smarts_filters_workflows(self):
+        """
+        Will list all available SMARTS filters workflows availbale in the project
+        """
+        db = self.cs_database_file
+        cs_utils.list_available_filters_workflows(db)
+    
     def subset_table_by_smarts_workflow(self,table_name,workflow_id):
         try:
             db = f"{self.cs_db_path}/chemspace.db"
@@ -218,6 +233,91 @@ class ChemSpace:
         db = self.projects_db
         cs_utils.list_available_smarts_filters(db)
         
+    def list_available_smarts_reactions(self):
+        """
+        Will list all available SMARTS reactions in the project
+        """
+        db = self.cs_database_file
+        cs_utils.list_available_smarts_reactions(db)
+        
+    def list_available_reactions_workflows(self,complete_info=0):
+        """
+        Will list all available SMARTS reactions in the project
+        """
+        db = self.cs_database_file
+        cs_utils.list_available_smarts_reactions_workflows(db,complete_info)
+        
+    def add_smarts_reaction(self,smarts_reaction,description=None):
+        try: 
+            db = f"{self.cs_db_path}/chemspace.db"
+            cs_utils.check_smarts_reaction_existence(db,smarts_reaction)
+            cs_utils.insert_smarts_reaction_in_table(db,smarts_reaction,description)
+            print(f"Succesfully added SMARTS reaction: '{smarts_reaction}'")
+        except Exception as error:
+            print(f"Error inserting SMARTS filter: '{smarts_reaction}' \n {error}")
+    
+    def add_smarts_reaction_workflow(self,smarts_reactions_id_list):
+        """
+        Create a workflow of chemical transformations (reactions) based on available reactions lists.
+        
+        Args:
+            smarts_reactions_id_list (list): List of SMARTS reaction IDs to be included
+        
+        Returns:
+            None
+            
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.add_smarts_reaction_workflow([reaction1_id, reaction2_id,..])
+        """
+        
+        try: 
+            db = f"{self.cs_db_path}/chemspace.db"
+            cs_utils.check_smarts_reaction_workflow_existence(db,smarts_reactions_id_list)
+            description = input("Enter a description for the SMARTS reactions workflow: ") 
+            smarts_reactions_list, smarts_descriptions_list = cs_utils.parse_smarts_reactions_id_list(db,smarts_reactions_id_list)
+            cs_utils.store_smarts_reactions_workflow(db,smarts_reactions_list,smarts_reactions_id_list,smarts_descriptions_list,description)
+            print(f"Succesfully created SMARTS reactions workflow with reactions: '{smarts_reactions_id_list}'")
+            
+        except Exception as error:
+            print("An error occurred while trying to create the SMARTS reactions workflow. Please check the inputs and try again.")
+            print(error)
+            
+    def apply_reaction_workflow(self,reaction_workflow_id,reactants_lists,dry_run=0):
+        """
+        Will apply a reaction workflow based on a given list of reactants and a reaction workflow ID.
+        
+        Args:
+            reaction_workflow_id (int): ID of the reaction workflow to be used
+            reactants_lists (list of lists): List of lists containing reactants for each reaction in the workflow:
+                [
+                    [reactant1, reactant2, ...],  # Reactants for the first reaction
+                    [reactant3, reactant4, ...],  # Reactants for the second reaction
+                    ...
+                ]
+        
+        Returns:
+        
+        """
+        
+        try:
+            # Check if the reaction definition is correct
+            smarts_reaction_workflow_list = cs_utils.check_reaction_definition(self.cs_database_file,reaction_workflow_id,reactants_lists,dry_run)
+            
+            # Check if reaction results table exists, if not create it
+            cs_utils.create_reactions_results_table(self.cs_database_file)    
+            
+            # Apply the corresponding reaction workflow
+            final_products_df = cs_utils.apply_validated_reaction_workflow(self.cs_database_file,smarts_reaction_workflow_list,reactants_lists,dry_run)
+            
+            if dry_run == 0:
+                # Store the final products in the reactions results the database
+                cs_utils.store_reaction_results(self.cs_database_file, final_products_df, reaction_workflow_id, reactants_lists)
+        
+        except Exception as error:
+            print(error)
+            print("An error occurred while trying to apply the reaction workflow. Please check the inputs and try again.")
+        
     def copy_table_to_new_name(self, old_table_name, new_table_name):
         """
         Copy the content of an existing table to a new table with a different name.
@@ -237,27 +337,22 @@ class ChemSpace:
         
         print(f"Successfully copied table '{old_table_name}' to '{new_table_name}'")
         
-    def add_smarts_reaction(self,smarts_reaction,description=None):
-        try: 
-            db = f"{self.cs_db_path}/chemspace.db"
-            cs_utils.check_smarts_reaction_existence(db,smarts_reaction)
-            cs_utils.insert_smarts_reaction_in_table(db,smarts_reaction,description)
-            print(f"Succesfully added SMARTS reaction: '{smarts_reaction}'")
-        except Exception as error:
-            print(f"Error inserting SMARTS filter: '{smarts_reaction}' \n {error}")
-    
-    def add_smarts_reaction_workflow(self,smarts_reactions_id_list):
+    def save_table_to_csv(self, table_name):
         """
-        Will create a workflow to subset a table by SMARTS reactions
+        Save the content of a table to a CSV file.
         """
-        try: 
-            db = f"{self.cs_db_path}/chemspace.db"
-            cs_utils.check_smarts_reaction_workflow_existence(db,smarts_reactions_id_list)
-            description = input("Enter a description for the SMARTS reactions workflow: ") 
-            smarts_reactions_list, smarts_descriptions_list = cs_utils.parse_smarts_reactions_id_list(db,smarts_reactions_id_list)
-            cs_utils.store_smarts_reactions_workflow(db,smarts_reactions_list,smarts_reactions_id_list,smarts_descriptions_list,description)
-            print(f"Succesfully created SMARTS reactions workflow with reactions: '{smarts_reactions_id_list}'")
-            
-        except Exception as error:
-            print("An error occurred while trying to create the SMARTS reactions workflow. Please check the inputs and try again.")
-            print(error)
+        db = f"{self.cs_db_path}/chemspace.db"
+        conn = sqlite3.connect(db)
+        
+        # Read the table into a DataFrame
+        df = pd.read_sql_query(f"SELECT SMILES,name,flag FROM {table_name}", conn)
+        
+        # Set the output path 
+        output_path = self.project.proj_folders_path["chemspace"]["misc"]
+        
+        # Save the DataFrame to a CSV file
+        df.to_csv(f"{output_path}/{table_name}.csv", index=False, header=None)
+        
+        conn.close()
+        
+        print(f"Successfully saved table '{table_name}' to '{output_path}/{table_name}.csv'")

@@ -317,11 +317,11 @@ def perform_minimization(output_path,ligand_prefix,solvent,inform=1):
             print(f"Runnning 'min2' for ligand: '{ligand_prefix}'")
         subprocess.run(command, shell=True, capture_output=True, text=True)
     
-def write_mmgbsa_input(output_path):
+def write_mmgbsa_input(output_path,interval=100):
     with open(f'{output_path}/mmgbsa.in','w') as mmgbsa_file:
         mmgbsa_file.write("Per-residue GB and PB decomposition \n")
         mmgbsa_file.write("&general \n")
-        mmgbsa_file.write("startframe = 1, interval = 100, verbose=1, \n")
+        mmgbsa_file.write(f"startframe = 1, interval = {interval}, verbose=1, \n")
         mmgbsa_file.write("/ \n")
         mmgbsa_file.write("&gb \n")
         mmgbsa_file.write("igb=5, saltcon=0.100, \n")
@@ -351,16 +351,19 @@ def strip_waters(output_path,traj_file,prmtop_file):
     command = f'{cpptraj_path} -i {output_path}/cpptraj_strip_wat.in' 
     subprocess.run(command, shell=True, capture_output=True, text=True)
     
-def apply_ante_MMPBSA(output_path):
+def apply_ante_MMPBSA(output_path,ligresname,amberhome):
     # Determine the ante_MMPBSA path
     anteMMPBSA_path = shutil.which('ante-MMPBSA.py')
+    # Set $AMBERHOME environment variable
+    os.environ["AMBERHOME"] = amberhome
     # Run ante_MMPBSA computation
-    command = f'{anteMMPBSA_path} -p {output_path}/complex.prmtop -s :WAT,Na+,Cl- -c {output_path}/complex_MMGBSA.prmtop -r {output_path}/receptor_MMGBSA.prmtop -l {output_path}/ligand_MMGBSA.prmtop -n :UNL' 
+    command = f'{anteMMPBSA_path} -p {output_path}/complex.prmtop -s :WAT,Na+,Cl- -c {output_path}/complex_MMGBSA.prmtop -r {output_path}/receptor_MMGBSA.prmtop -l {output_path}/ligand_MMGBSA.prmtop -n :{ligresname}' 
+    
     print(f"Computing ante_MMPBSA")
+    
     subprocess.run(command, shell=True, capture_output=True, text=True)
 
 def compute_MMPBSA(output_path,traj_input):
-    
     
     # Check if the MMPBSA.py script is available in the conda environment, if so delete it so as to use the system one
     conda_prefix = os.environ.get('CONDA_PREFIX')
@@ -556,6 +559,59 @@ def parse_receptor_fields(receptor_filename, main_fingerprints_folder):
     
     file.close()
     
-    
-    
     return resname_field,resnumber_field,chain_name_field
+
+def prepare_MD_folder_for_MMGBSA(assay_folder,ligname,amberhome):
+    # Prepare the corresponding .prmtop and .inpcrd files for MMGBSA
+    apply_ante_MMPBSA(assay_folder,ligname,amberhome)
+    write_mmgbsa_input(assay_folder)
+    write_MMGBSA_computation_script(assay_folder)
+    
+def write_MMGBSA_computation_script(assay_folder,traj_input='prod_strip.nc'):
+    
+    # Get the MMPBSA.py path
+    MMPBSA_path = shutil.which('MMPBSA.py')
+    
+    # Generate the command to run MMPBSA
+    command1 = f'{MMPBSA_path} -i {assay_folder}/mmgbsa.in -o {assay_folder}/mmgbsa.out -do {assay_folder}/mmgbsa_DECOMP.out -cp {assay_folder}/complex_MMGBSA.prmtop -rp {assay_folder}/receptor_MMGBSA.prmtop -lp {assay_folder}/ligand_MMGBSA.prmtop -y {assay_folder}/{traj_input}'
+    
+    # Generate the command to clean MMPBSA
+    command2 = f'{MMPBSA_path} -i {assay_folder}/mmgbsa.in -o {assay_folder}/mmgbsa.out -do {assay_folder}/mmgbsa_DECOMP.out -cp {assay_folder}/complex_MMGBSA.prmtop -rp {assay_folder}/receptor_MMGBSA.prmtop -lp {assay_folder}/ligand_MMGBSA.prmtop -y {assay_folder}/{traj_input} --clean'
+    
+    with open(f'{assay_folder}/mmgbsa_execution.sh','w') as exec_file:
+        exec_file.write("#!/bin/bash \n")
+        exec_file.write(f"{command1}\n")
+        exec_file.write(f"{command2}\n")
+    
+    exec_file.close()
+    
+    print(f"Finished preparing MMGBSA execution script in: \n \t {assay_folder}")
+    
+def print_mmgbsa_info(assay_folder):
+    
+    print("Assay folder: ", assay_folder)
+    
+    with open(f"{assay_folder}/mmgbsa.out",'r') as mmgbsa_file:
+        activate = 0
+        for line in mmgbsa_file:
+            if "Differences (Complex - Receptor - Ligand):" in line:
+                activate = 1
+    
+            elif activate == 1:
+                line_split = line.split()
+                if "VDWAALS" in line:
+                    print(f"VDWAALS: {line_split[1]}")
+                elif "EEL" in line:
+                    print(f"EEL: {line_split[1]}")
+                elif "EGB" in line:
+                    print(f"EGB: {line_split[1]}")
+                elif "ESURF" in line:
+                    print(f"ESURF: {line_split[1]}")
+                elif "DELTA G gas" in line:
+                    print(f"DELTA G gas: {line_split[3]}")
+                elif "DELTA G solv" in line:
+                    print(f"DELTA G solv: {line_split[3]}")
+                elif "DELTA TOTAL" in line:
+                    print(f"DELTA G total: {line_split[2]}")
+                
+                

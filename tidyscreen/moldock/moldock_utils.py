@@ -9,6 +9,7 @@ from ringtail import RingtailCore
 import matplotlib.pyplot as plt
 import pandas as pd
 from pathlib import Path
+import sqlite3
 
 def tar_folder(folder_path,file_prefix):
     # Prepare storing naming
@@ -363,4 +364,40 @@ def check_docking_assay(registries_db,assay_id):
 def save_df_to_db(db,df,table_name,action="replace"):
     conn = tidyscreen.connect_to_db(db)
     df.to_sql(con=conn, name=table_name,if_exists=action,index=None)
+
+def tag_receptor_model_as_obsolete(db,id_receptor_model):
+
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()  
+
+    # Get the current string 
+    cursor.execute(f"SELECT description FROM receptors WHERE id = {id_receptor_model}")
+    current_string = cursor.fetchone()[0]
+
+    # Concatenate the "#OBSOLETE#"" tag to the current string
+    new_string = current_string + " #OBSOLETE#"
+
+    # Update the description in the database
+    cursor.execute(f"UPDATE receptors SET description = ? WHERE id = ?", (new_string, id_receptor_model))
+    conn.commit()
+    conn.close()    
+
+    print(f"Receptor model with id: {id_receptor_model} has been tagged as obsolete.")  
+
+def check_description_tag(db,id_receptor_model,tag):
+    """
+    Will check if the receptor model with id: 'id_receptor_model' has the tag: 'tag' in its description.
+    """
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()  
+
+    # Get the current string 
+    cursor.execute(f"SELECT description FROM receptors WHERE id = ?", (id_receptor_model,))
+    current_string = cursor.fetchone()[0]
+
+    if tag in current_string:
+        print(f"The receptor model with id: {id_receptor_model} has tag: '{tag}' in its description. Exiting...")
+        conn.close()
+        sys.exit()
+    
     

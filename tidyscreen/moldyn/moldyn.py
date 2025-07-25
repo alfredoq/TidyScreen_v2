@@ -3,15 +3,22 @@ warnings.filterwarnings("ignore")
 from tidyscreen.moldyn import moldyn_utils as moldyn_utils
 from tidyscreen.docking_analysis import docking_analysis_utils as docking_analysis_utils
 import sys
-
+import os
 
 class MolDyn:
     
-    def __init__(self, project):
+    def __init__(self, project,amberhome=None):
         self.project = project
         self.mdyn_path = self.project.proj_folders_path['dynamics']
         self.docking_path = self.project.proj_folders_path["docking"]
         self.docking_assays_path = self.project.proj_folders_path["docking"]["docking_assays"]
+        if amberhome is None:
+            self.amberhome = input("Please, input the AMBERHOME path: ")
+            if self.amberhome is None:
+                print("Error: AMBERHOME environment variable is not set.")
+                sys.exit()
+        else:
+            self.amberhome = amberhome
     
     def create_md_assay(self,docking_assay_id,docking_pose_id):
         
@@ -64,3 +71,48 @@ class MolDyn:
             print("Error creating MD assays. Stopping...")
             print(error)
             sys.exit()
+            
+    def analyze_trajectory(self,assay_id,ligname="UNL"):
+        """
+        Analyze the trajectory of a given MD assay.
+        """
+        try:
+            # Retrieve the assay folder
+            amberhome = self.amberhome
+            assay_folder = f"{self.mdyn_path['md_assays']}/assay_{assay_id}"
+            
+            # Check if the folder exists
+            if os.path.isdir(assay_folder):
+                pass
+            else:
+                print(f"Assay folder {assay_folder} does not exist. Stopping...")
+                sys.exit()
+            
+            # Analyze the trajectory
+            moldyn_utils.prepare_MD_folder_for_MMGBSA(assay_folder,ligname,amberhome)
+            
+        except Exception as error:
+            print("Error analyzing trajectory. Stopping...")
+            print(error)
+            sys.exit()
+            
+    def show_mmgbsa_results(self,assay_id):
+        """
+        Show the MMGBSA results of a given MD assay.
+        """
+        try:
+            # Retrieve the assay folder
+            assay_folder = f"{self.mdyn_path['md_assays']}/assay_{assay_id}"
+            
+            # Check if the folder exists
+            if os.path.isdir(assay_folder):
+                moldyn_utils.print_mmgbsa_info(assay_folder)
+            
+            else:
+                print(f"Assay folder {assay_folder} does not exist. Stopping...")
+                sys.exit()
+        except Exception as error:
+            print("Error showing MMGBSA results. Stopping...")
+            print(error)
+            sys.exit()
+                
