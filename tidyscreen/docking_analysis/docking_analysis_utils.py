@@ -28,7 +28,7 @@ def check_docking_assay(registries_db,assay_id):
         print(f"Problem retrieving 'assay_id': {assay_id}. Stopping...")
         sys.exit()
         
-def process_dlg_files(assay_folder,assay_id,max_poses=10):
+def process_dlg_files(assay_folder,assay_id,max_poses):
     
     try:
         results_db_file = f"{assay_folder}/assay_{assay_id}.db"
@@ -75,7 +75,7 @@ def save_df_to_db(db,df,table_name,action="replace"):
     conn = tidyscreen.connect_to_db(db)
     df.to_sql(con=conn, name=table_name,if_exists=action,index=None)
 
-def extract_1_pdb_per_cluster(assay_folder,results_db_file):
+def extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses):
     """
     This function will parse a .dlg file and will extract 1 .pdb per identified cluster into a folder named 'cluster_pdb_files' located within the docking assay folder
     """
@@ -91,7 +91,7 @@ def extract_1_pdb_per_cluster(assay_folder,results_db_file):
     
     activation_keywords =  ['CLUSTERING', 'HISTOGRAM'] # This is the opening line of the Clustering Histogram
     shutdown_keywords = ['RMSD', 'TABLE']
-    number_of_poses_to_extract = 999
+    number_of_poses_to_extract = max_poses
     
     for index, row in ligands_name_df.iterrows():
         ligname = row['LigName']
