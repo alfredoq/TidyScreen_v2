@@ -151,13 +151,13 @@ class DockingAnalysis:
             # Add to iteration counter
             iteration += 1
 
-        # if mmgbsa == 1:
-        #     ## Sort the 'mmgbsa_fingerprints' table based on Pose_ID
-        #     general_functions.sort_table(assay_folder,assay_id,"mmgbsa_fingerprints","Pose_ID")
+        if mmgbsa == 1:
+            ## Sort the 'mmgbsa_fingerprints' table based on Pose_ID
+            general_functions.sort_table(assay_folder,assay_id,"mmgbsa_fingerprints","Pose_ID")
             
-        # if prolif == 1:
-        #     ## Sort the 'prolif_fingerprints' table based on Pose_ID
-        #     general_functions.sort_table(assay_folder,assay_id,"prolif_fingerprints","Pose_ID")
+        if prolif == 1:
+            ## Sort the 'prolif_fingerprints' table based on Pose_ID
+            general_functions.sort_table(assay_folder,assay_id,"prolif_fingerprints","Pose_ID")
 
         ## Delete the general fingerprint folders if required
         if clean_assay_folder == 1:
