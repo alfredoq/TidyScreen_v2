@@ -396,7 +396,6 @@ def compute_mmgbsa_fingerprints(output_path,main_fingerprints_folder,complex_pdb
         # # Return prmtop and minimized file
         # return f'{output_path}/complex_MMGBSA.prmtop', f'{output_path}/min1.crd', tleap_vs_cristal_reference_dict, decomp_csv_file_renum
 
-
 def prepare_prolif_input_coordinates(output_path,complex_pdb_file,solvent,min_steps):
     # From the complex filename prepare the corresponding files naming:
     ligand_prefix = complex_pdb_file.split('/')[-1].split('_')[1]
@@ -407,12 +406,8 @@ def prepare_prolif_input_coordinates(output_path,complex_pdb_file,solvent,min_st
     # Execute tLeap initialization
     md_utils.run_tleap_input(output_path,input_file='tleap.in')
 
-
-
-
     # Return the prmtop and inpcrd files
     return f'{output_path}/complex.prmtop', f'{output_path}/complex.inpcrd'
-
  
 def retrieve_docked_poses_id(results_db):
     conn = tidyscreen.connect_to_db(results_db)
@@ -488,7 +483,6 @@ def store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligna
     except Exception as error:
         print(f"Fingerprints for pose: '{results_pose_id}' already exists. Passing...")
 
-
 def store_mmbgsa_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,mmpbsa_decomp_csv_output):
     """
     This function will store the MMGBSA computed fingerprints results in the database
@@ -533,7 +527,6 @@ def store_mmbgsa_fingerprints_results_in_db(assay_folder,assay_id,results_pose_i
     
     except Exception as error:
         print(f"MMGBSA fingerprints for pose: '{results_pose_id}' already exists. Passing...")
-    
 
 def store_prolif_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,prolif_output_csv):
     results_db = f"{assay_folder}/assay_{assay_id}.db"
@@ -595,7 +588,6 @@ def store_docked_pose_in_db(output_path,assay_id,results_pose_id,ligname,sub_pos
     except Exception as error:
         print(f"Docked por corresponding to: '{results_pose_id}' already exists. Passing...")
         
-        
 def parse_mmgbsa_general_output(mmgbsa_outfile):
     
     with open(mmgbsa_outfile,'r') as output_file:
@@ -631,7 +623,6 @@ def parse_mmgbsa_general_output(mmgbsa_outfile):
     output_file.close()
 
     return vdwaals, eel, egb, esurf, delta_g_gas, delta_g_solv, delta_g_total
-
 
 def compute_tleap_vs_cristal_reference_dict(receptor_filename, main_fingerprints_folder):
     

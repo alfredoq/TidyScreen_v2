@@ -74,12 +74,8 @@ class DockingAnalysis:
             # Compute the MMPBSA based per-residue interaction fingerprint
             
             try:
-                
                 ## Compute the MMGBSA fingerprints
                 prmtop_file, crd_file, tleap_vs_cristal_reference_dict,mmpbsa_decomp_csv_output = docking_analysis_utils.compute_fingerprints(output_path,main_fingerprints_folder,complex_pdb_file,receptor_filename,solvent,min_steps,iteration,ligresname,amberhome)
-        
-                #docking_analysis_utils.compute_mmgbsa_fingerprints(output_path,main_fingerprints_folder,complex_pdb_file,receptor_filename,solvent,min_steps,iteration,ligresname,amberhome)
-        
         
                 # Store the MMGBSA results in the database
                 docking_analysis_utils.store_mmbgsa_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,mmpbsa_decomp_csv_output)
@@ -122,9 +118,6 @@ class DockingAnalysis:
             docking_analysis_utils.store_prolif_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,prolif_output_csv)
             
         
-    # ### Store relevant computed files in the results database
-    #     docking_analysis_utils.store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,mmpbsa_decomp_csv_output,prolif_output_csv)
-    
     ### Store the docked pose in the results database if required
         if store_docked_poses == 1:
             docking_analysis_utils.store_docked_pose_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,pose_pdb_file)
