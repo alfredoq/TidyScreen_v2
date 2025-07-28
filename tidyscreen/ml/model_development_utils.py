@@ -21,7 +21,7 @@ def process_poses_list(assay_id,docking_results_db,training_set_db,pose_id_list,
         
 def retrieve_pose(cursor,pose):
     # Retrieve the prolif blob object stored in the results table
-    cursor.execute("SELECT LigName, sub_pose, prolif_csv_file FROM fingerprints WHERE Pose_ID = ?", (pose,))
+    cursor.execute("SELECT LigName, sub_pose, prolif_csv_file FROM prolif_fingerprints WHERE Pose_ID = ?", (pose,))
     result = cursor.fetchall()
     
     for ligname, sub_pose, blob in result:
