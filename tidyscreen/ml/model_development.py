@@ -10,7 +10,7 @@ class ModelDevelopment:
         self.training_set_path = self.project.proj_folders_path["ml"]["training_sets"]
         self.training_set_db = f"{self.training_set_path}/training_sets.db"
     
-    def flag_pose_as_positive(self,assay_id_list,pose_id_list_of_lists):
+    def flag_poses_as_positive(self,assay_id_list,pose_id_list_of_lists):
         
         # Loop over the list of assay_ids
         for index, assay_id in enumerate(assay_id_list):
@@ -24,7 +24,7 @@ class ModelDevelopment:
             ### Process the list of poses and store them into the target db
             mdevel_utils.process_poses_list(assay_id,docking_results_db,training_set_db,poses_id_list,"positives",1)
         
-    def flag_pose_as_negative(self,assay_id_list,pose_id_list_of_lists):
+    def flag_poses_as_negative(self,assay_id_list,pose_id_list_of_lists):
         
         # Loop over the list of assay_ids
         for index, assay_id in enumerate(assay_id_list):
@@ -43,7 +43,6 @@ class ModelDevelopment:
         training_set_db = self.training_set_db
         training_set_df, assay_pose_dict = mdevel_utils.combine_fingerprints(training_set_db)
         mdevel_utils.store_training_set(training_set_db, training_set_df,assay_pose_dict)
-        
     
     def retrieve_training_set(self,set_id,get_poses=1):
         # Define the fingerprints db
