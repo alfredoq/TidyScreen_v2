@@ -150,17 +150,26 @@ def create_prolif_reference_df(tleap_vs_cristal_reference_dict,interactions_list
     return all_residues_plf_df
 
 def map_prolif_fingerprints_df_to_crystal_sequence(df,tleap_vs_cristal_reference_dict):
-            
+    
+    renamed_df = df.rename(columns=tleap_vs_cristal_reference_dict)
+    
     # Drop the first level of the 'df' (corresponds to the Ligand name)
-    df.columns = df.columns.droplevel('ligand')  # or use the level number
+    #df.columns = df.columns.droplevel('ligand')  # or use the level number
+    renamed_df.columns = renamed_df.columns.droplevel('ligand')  # or use the level number
     
     # Rename upper level of the multindex column ProLIF fingerprints df
-    df.columns = pd.MultiIndex.from_tuples([(tleap_vs_cristal_reference_dict.get(upper, upper), lower) for upper, lower in df.columns]
-)
-    # Combine names in the two levels of the fingerprints dataframe
-    df.columns = ['{}_{}'.format(upper, lower) for upper, lower in df.columns]
+    #df.columns = pd.MultiIndex.from_tuples([(tleap_vs_cristal_reference_dict.get(upper, upper), lower) for upper, lower in df.columns])
     
-    return df
+    renamed_df.columns = pd.MultiIndex.from_tuples([(tleap_vs_cristal_reference_dict.get(upper, upper), lower) for upper, lower in renamed_df.columns])
+    
+    
+    # Combine names in the two levels of the fingerprints dataframe
+    #df.columns = ['{}_{}'.format(upper, lower) for upper, lower in df.columns]
+    
+    renamed_df.columns = ['{}_{}'.format(upper, lower) for upper, lower in renamed_df.columns]
+    
+    #return df
+    return renamed_df
 
 def merge_calculated_and_reference_fingerprints_df(calc_df,reference_df):
     

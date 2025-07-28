@@ -13,6 +13,7 @@ import MDAnalysis as mda
 import prolif as plf
 import csv
 from tidyscreen.GeneralFunctions import general_functions as general_functions
+import json
 
 
 def check_docking_assay(registries_db,assay_id):
@@ -150,7 +151,7 @@ def create_fingerprints_analysis_folder(self,assay_folder,assay_id,results_pose_
     # Get the receptor filename from the dlg file
     receptor_path = f'{assay_folder}/receptor'
     receptor_filename = get_receptor_name_from_dlg(dlg_file,receptor_path,output_path)
-    # Generate the complexed file into de corresponding folder
+    # Generate the complex file into de corresponding folder
     complex_pdb_file = generate_complex_from_pose(ligname,pose_pdb_file, output_path, receptor_filename,results_pose_id)
     # Retrieve table name matching docking assay
     table_name = retrieve_table_name_from_assay_id(self,assay_id)
@@ -344,7 +345,75 @@ def generate_tleap_vs_cristal_reference_dict(decomp_file,decomp_file_renum):
         }
 
     return tleap_vs_cristal_reference_dict
+
+def compute_mmgbsa_fingerprints(output_path,main_fingerprints_folder,complex_pdb_file,receptor_filename,solvent,min_steps,iteration,ligresname,amberhome):
     
+    # From the complex filename prepare the corresponding files naming:
+    ligand_prefix = complex_pdb_file.split('/')[-1].split('_')[1]
+    ligand_mol2_ref_file = f'{ligand_prefix}_gaff.mol2'
+    ligand_frcmod_ref_file = f'{ligand_prefix}.frcmod'
+    # Prepare the input files to compute prepare the .prmtop and .inpcrd
+    md_utils.prepare_md_initial_files(output_path,complex_pdb_file,ligand_mol2_ref_file,ligand_frcmod_ref_file, solvent,min_steps,dynamics=0)
+    # Execute tLeap initialization
+    md_utils.run_tleap_input(output_path,input_file='tleap.in')
+    # Perform minimizations
+    md_utils.perform_minimization(output_path,ligand_prefix,solvent)
+    # Create the MMGBSA input file
+    md_utils.write_mmgbsa_input(output_path)
+    # Use ante ante-MMPBSA.py to create the files required for computation
+    md_utils.apply_ante_MMPBSA(output_path,ligresname,amberhome)
+    # Strip solvent (if explicit model was used) and/or compute the MMPBSA 
+    
+    if solvent == "explicit":
+        # Strip waters from min2.crd to
+        md_utils.strip_waters(assay_folder,"min2.crd","complex.prmtop")
+        # perform the MMPBSA analysis
+        assay_folder, decomp_file = md_utils.compute_MMPBSA(output_path,"min2_strip.crd")
+
+        # renumber the output of MMGBSA according to the original receptor.
+        decomp_csv_file,decomp_csv_file_renum = md_utils.renumber_mmgbsa_output(output_path,decomp_file,receptor_filename,iteration)
+        
+        #decomp_csv_file,decomp_csv_file_renum = md_utils.renumber_mmgbsa_output2(output_path,decomp_file,tleap_vs_cristal_resnames_dict,iteration)
+        
+        # Create a dictionary of resname/resnumber tleap vs. crystal
+        tleap_vs_cristal_reference_dict = generate_tleap_vs_cristal_reference_dict(decomp_csv_file,decomp_csv_file_renum)
+        
+        # Return prmtop and minimized file
+        return f'{output_path}/complex_MMGBSA.prmtop', f'{output_path}/min2_strip.crd', tleap_vs_cristal_reference_dict, decomp_csv_file_renum
+    
+    if solvent == "implicit":
+        # perform the MMPBSA analysis
+        output_path, decomp_file = md_utils.compute_MMPBSA(output_path,"min1.crd")
+        
+        ## renumber the output of MMGBSA according to the original receptor.
+        decomp_csv_file,decomp_csv_file_renum = md_utils.renumber_mmgbsa_output(output_path,main_fingerprints_folder,decomp_file,receptor_filename,iteration)
+
+        #decomp_csv_file,decomp_csv_file_renum = md_utils.renumber_mmgbsa_output2(output_path,decomp_file,tleap_vs_cristal_resnames_dict,iteration)
+
+        # # Create a dictionary of resname/resnumber tleap vs. crystal
+        # tleap_vs_cristal_reference_dict = generate_tleap_vs_cristal_reference_dict(decomp_csv_file,decomp_csv_file_renum)
+        
+        # # Return prmtop and minimized file
+        # return f'{output_path}/complex_MMGBSA.prmtop', f'{output_path}/min1.crd', tleap_vs_cristal_reference_dict, decomp_csv_file_renum
+
+
+def prepare_prolif_input_coordinates(output_path,complex_pdb_file,solvent,min_steps):
+    # From the complex filename prepare the corresponding files naming:
+    ligand_prefix = complex_pdb_file.split('/')[-1].split('_')[1]
+    ligand_mol2_ref_file = f'{ligand_prefix}_gaff.mol2'
+    ligand_frcmod_ref_file = f'{ligand_prefix}.frcmod'
+    # Prepare the input files to compute prepare the .prmtop and .inpcrd
+    md_utils.prepare_md_initial_files(output_path,complex_pdb_file,ligand_mol2_ref_file,ligand_frcmod_ref_file, solvent,min_steps,dynamics=0)
+    # Execute tLeap initialization
+    md_utils.run_tleap_input(output_path,input_file='tleap.in')
+
+
+
+
+    # Return the prmtop and inpcrd files
+    return f'{output_path}/complex.prmtop', f'{output_path}/complex.inpcrd'
+
+ 
 def retrieve_docked_poses_id(results_db):
     conn = tidyscreen.connect_to_db(results_db)
     cursor = conn.cursor()
@@ -419,6 +488,84 @@ def store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligna
     except Exception as error:
         print(f"Fingerprints for pose: '{results_pose_id}' already exists. Passing...")
 
+
+def store_mmbgsa_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,mmpbsa_decomp_csv_output):
+    """
+    This function will store the MMGBSA computed fingerprints results in the database
+    """
+    results_db = f"{assay_folder}/assay_{assay_id}.db"
+    conn = tidyscreen.connect_to_db(results_db)
+    cursor = conn.cursor()
+    
+    # Get the energy values from the MMPBSA general outfile
+    mmgbsa_outfile = f"{assay_folder}/fingerprints_analyses/pose_{results_pose_id}/mmgbsa.out"
+    vdwaals, eel, egb, esurf, delta_g_gas, delta_g_solv, delta_g_total = parse_mmgbsa_general_output(mmgbsa_outfile)
+    
+    # Create table if it doesn't exist
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS mmgbsa_fingerprints (
+        Pose_ID INTEGER PRIMARY KEY,
+        LigName TEXT,
+        sub_pose TEXT,
+        vdwaals REAL,
+        eel REAL,
+        egb REAL,
+        esurf REAL,
+        delta_g_gas REAL,
+        delta_g_solv REAL,
+        delta_g_total REAL,
+        complex_pdb_file BLOB,
+        mmgbsa_csv_file BLOB
+        )
+    ''')
+    
+    # Create blobs to store
+    complex_tar = general_functions.generate_tar_file(complex_pdb_file)
+    mmpbsa_decomp_csv_tar = general_functions.generate_tar_file(mmpbsa_decomp_csv_output)
+        
+    try: 
+        # Insert a single row
+        fingerprint_data = (results_pose_id,ligname,sub_pose,vdwaals,eel,egb,esurf,delta_g_gas,delta_g_solv,delta_g_total,complex_tar,mmpbsa_decomp_csv_tar)
+        cursor.execute('INSERT INTO mmgbsa_fingerprints (Pose_ID, LigName, sub_pose, vdwaals, eel, egb, esurf, delta_g_gas, delta_g_solv, delta_g_total, complex_pdb_file, mmgbsa_csv_file) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', fingerprint_data)
+        # Commit changes and close connection
+        conn.commit()
+        conn.close()
+    
+    except Exception as error:
+        print(f"MMGBSA fingerprints for pose: '{results_pose_id}' already exists. Passing...")
+    
+
+def store_prolif_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,prolif_output_csv):
+    results_db = f"{assay_folder}/assay_{assay_id}.db"
+    conn = tidyscreen.connect_to_db(results_db)
+    cursor = conn.cursor()
+    
+    # Create table if it doesn't exist
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS prolif_fingerprints (
+        Pose_ID INTEGER PRIMARY KEY,
+        LigName TEXT,
+        sub_pose TEXT,
+        complex_pdb_file BLOB,
+        prolif_csv_file BLOB
+    )
+    ''')
+    
+    # Create blobs to store
+    complex_tar = general_functions.generate_tar_file(complex_pdb_file)
+    prolif_csv_tar = general_functions.generate_tar_file(prolif_output_csv)
+    
+    try: 
+        # Insert a single row
+        fingerprint_data = (results_pose_id,ligname,sub_pose,complex_tar,prolif_csv_tar)
+        cursor.execute('INSERT INTO prolif_fingerprints (Pose_ID, LigName, sub_pose, complex_pdb_file, prolif_csv_file) VALUES (?,?,?,?,?)', fingerprint_data)
+        # Commit changes and close connection
+        conn.commit()
+        conn.close()
+    
+    except Exception as error:
+        print(f"Prolif fingerprints for pose: '{results_pose_id}' already exists. Passing...")
+
 def store_docked_pose_in_db(output_path,assay_id,results_pose_id,ligname,sub_pose,pose_pdb_file):
     results_db = f"{output_path}/assay_{assay_id}.db"
     conn = tidyscreen.connect_to_db(results_db)
@@ -484,3 +631,39 @@ def parse_mmgbsa_general_output(mmgbsa_outfile):
     output_file.close()
 
     return vdwaals, eel, egb, esurf, delta_g_gas, delta_g_solv, delta_g_total
+
+
+def compute_tleap_vs_cristal_reference_dict(receptor_filename, main_fingerprints_folder):
+    
+    resname_field,resnumber_field,chain_name_field = md_utils.parse_receptor_fields(receptor_filename, main_fingerprints_folder)
+    
+    with open(receptor_filename, 'r') as receptor_file:
+        
+        counter = 0
+        
+        tleap_vs_cristal_resnames_dict = {}
+        
+        for line in receptor_file:
+            line_split = line.rsplit()
+            if line_split[0] == 'ATOM':
+                crystal_id = f"{line_split[resname_field]}{line_split[resnumber_field]}_{line_split[chain_name_field]}"
+                
+                # Check if the crystal_id is already in the dictionary, if not, add it
+                if crystal_id not in tleap_vs_cristal_resnames_dict.values():
+                    # Add value to the counter in oder to increment the tleap ID
+                    counter += 1
+                    # Create the tLeap ID
+                    tleap_id = f"{line_split[resname_field]}{counter}"
+                    # Append the new ID to the dictionary
+                    tleap_vs_cristal_resnames_dict[tleap_id] = crystal_id
+    
+    receptor_file.close()
+    
+    # Dump the dictionary to a csv file
+    with open(f"{main_fingerprints_folder}/tleap_vs_cristal_resnames_dict.csv", 'w') as dictfile:
+        json.dump(tleap_vs_cristal_resnames_dict, dictfile)
+    
+    
+    return tleap_vs_cristal_resnames_dict
+    
+    

@@ -421,18 +421,26 @@ def clean_MMPBSA_files(target_dir):
 
 def renumber_mmgbsa_output(output_path,main_fingerprints_folder,decomp_file,receptor_filename,iteration):
     
-    # Parse iformation regarding the receptor file to manage renumbering
-    if iteration == 1:
-        resname_field,resnumber_field,chain_name_field = parse_receptor_fields(receptor_filename, main_fingerprints_folder)
+    # # Parse iformation regarding the receptor file to manage renumbering
+    # if iteration == 1:
+    #     resname_field,resnumber_field,chain_name_field = parse_receptor_fields(receptor_filename, main_fingerprints_folder)
     
-    else:
-        # This will load the parameters from the 'params.json' file
-        with open(f"{main_fingerprints_folder}/receptor_fields.json",'r') as file:
+    # else:
+    #     # This will load the parameters from the 'params.json' file
+    #     with open(f"{main_fingerprints_folder}/receptor_fields.json",'r') as file:
+    #         loaded_params = json.load(file)
+
+    #     resname_field = loaded_params['resname_field']
+    #     resnumber_field = loaded_params['resnumber_field']
+    #     chain_name_field = loaded_params['chain_name_field']
+    
+    # This will load the parameters from the 'params.json' file
+    with open(f"{main_fingerprints_folder}/receptor_fields.json",'r') as file:
             loaded_params = json.load(file)
 
-        resname_field = loaded_params['resname_field']
-        resnumber_field = loaded_params['resnumber_field']
-        chain_name_field = loaded_params['chain_name_field']
+    resname_field = loaded_params['resname_field']
+    resnumber_field = loaded_params['resnumber_field']
+    chain_name_field = loaded_params['chain_name_field']
     
     # Get a dictionary (resname_resnum) for the original receptor
     receptor_sequence_dict = general_functions.get_pdb_sequence_dict(receptor_filename,resname_field,resnumber_field,chain_name_field)
@@ -452,6 +460,25 @@ def renumber_mmgbsa_output(output_path,main_fingerprints_folder,decomp_file,rece
     decomp_csv_file = prepare_mmgbsa_original_output(receptor_sequence_dict,decomp_file_dict,output_path)
 
     return decomp_csv_file,decomp_csv_file_renum
+
+def renumber_mmgbsa_output2(output_path,decomp_file,tleap_vs_cristal_resnames_dict,iteration):
+    
+    # Get a dictionary (resname_resnum_vales) for the data in the decomp file
+    decomp_file_dict = parse_mmgbsa_output(decomp_file)
+    
+    # Check if both dictionaries match. If NOT, stop execution
+    if len(tleap_vs_cristal_resnames_dict) != len(decomp_file_dict):
+        print("Dictionaries for renumbering do NOT match. Stopping...")
+        sys.exit()
+
+    
+    print(tleap_vs_cristal_resnames_dict)
+    print("#"*10)
+    print("#"*10)
+    print(decomp_file_dict)
+    
+
+    
 
 def parse_mmgbsa_output(filename):
     with open(filename,'r') as input_file:
