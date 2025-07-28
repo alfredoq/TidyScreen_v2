@@ -59,3 +59,5 @@ class ModelDevelopment:
             docking_assays_path = self.docking_assays_path
             mdevel_utils.retrieve_pdb_files(docking_assays_path,output_dir,members_id)
         
+        print(f"Training set retrieved and saved successfully to: {output_dir}.")
+        
