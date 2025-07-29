@@ -37,6 +37,7 @@ class DockingAnalysis:
         # Add docking subposes in database
         docking_analysis_utils.add_docking_subposes_nbr(results_db_file)
         # Extract 1 pdb pose per cluster
+        print(f"\n Extracting '{max_poses}' PDB poses per cluster \n")
         docking_analysis_utils.extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses,vmd_path)
     
     def compute_fingerprints_for_docked_pose(self, assay_id, results_pose_id, mmgbsa=1, prolif=1, clean_files=1, clean_folder=1, solvent="implicit", min_steps=5000, store_docked_poses=1, iteration=1,  ligresname="UNL"):
