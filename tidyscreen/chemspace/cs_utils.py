@@ -461,31 +461,30 @@ def append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sy
     
     if pdb == 1:
         # Prepare and store the corresponding .pdb file
-        pdb_file, tar_pdb_file, net_charge = pdb_from_smiles(row["SMILES"],temp_dir)
+        pdb_file, tar_pdb_file, net_charge = pdb_from_smiles(row["SMILES"],row["inchi_key"],temp_dir)
         store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
         action = 1
     
     if mol2_sybyl == 1 and pdb == 1:
         # Prepare and store the corresponding .mol2 file
         output_file_sybyl, output_tar_file_sybyl = mol2_from_pdb(pdb_file,net_charge,charge,at="sybyl")
-        # Store the .mol2 file - atom type: Sybyl
+        ## Store the .mol2 file - atom type: Sybyl
         store_file_as_blob(db,table_name,'mol2_file_sybyl',output_tar_file_sybyl,row)
     
     if mol2_gaff2 == 1 and pdb == 1:
         # Prepare and store the corresponding .mol2 file
         output_file_gaff, output_tar_file_gaff = mol2_from_pdb(pdb_file,net_charge,charge,at="gaff")
-        # Store the .mol2 file - atom type: gaff
+        # # Store the .mol2 file - atom type: gaff
         store_file_as_blob(db,table_name,'mol2_file_gaff',output_tar_file_gaff,row)
-        # Compute the .frcmod file
+        # # Compute the .frcmod file
         output_tar_frcmod = compute_frcmod_file(output_file_gaff,at="gaff")
-        # Store the .frcmod file
+        # # Store the .frcmod file
         store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
     
     if pdbqt == 1 and mol2_sybyl == 1 and pdb == 1:
         #Prepare and store the corresponding .pdbqt file
         tar_pdbqt_file = pdbqt_from_mol2(output_file_sybyl)
-        #print(tar_pdbqt_file)
-        # # Store the .pdbqt file
+        # Store the .pdbqt file
         store_file_as_blob(db,table_name,'pdbqt_file',tar_pdbqt_file,row)
 
     if mol2_sybyl == 1 or mol2_gaff2 == 1 and pdb == 1:
@@ -496,16 +495,16 @@ def append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sy
         print("No computation of molecules was requested. Stopping...")
         sys.exit()
 
-def pdb_from_smiles(smiles,dir,conf_rank):
+def pdb_from_smiles(smiles,inchi_key,dir,conf_rank):
     try:
         mol = Chem.MolFromSmiles(smiles)
         mol_hs = Chem.AddHs(mol)
         confs, mol_hs, ps = generate_ligand_conformers(mol_hs)
         selected_mol = get_conformer_rank(confs, mol_hs, ps, conf_rank)
-        pdb_file, inchi_key = save_ligand_pdb_file(selected_mol,dir)
+        pdb_file = save_ligand_pdb_file(selected_mol,inchi_key,dir)
         # Compute the net charge of the molecule for potential use in antechamber
         net_charge = compute_molecule_net_charge(mol)
-            
+        
         # Compress the pdb_file
         tar_pdb_file = generate_tar_file(pdb_file)
         
@@ -558,31 +557,6 @@ def mol2_from_pdb(pdb_file,net_charge,charge,at):
     subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
         
     # Compress the output file for storage
-    output_tar_file = generate_tar_file(output_file)
-        
-    return output_file, output_tar_file
-
-def sybyl_mol2_from_pdb(inchi_key,charge,temp_dir):
-    
-    pdb_file = f"{temp_dir}/{inchi_key}.pdb"
-    output_file = f"{temp_dir}/{inchi_key}_sybyl.mol2"
-    # Since Antechamber creates temporary files for the calculation, and they should not overwrite each other when executing in parallel, create a temporary folder following the molecule InChIKey, 'cd' into it and run the computation.
-    antechamber_temp_folder = f"{temp_dir}/{inchi_key}"
-    os.makedirs(antechamber_temp_folder,exist_ok=True) # Create the corresponding temp directory
-    # Compute the ligand net charge
-    net_charge = compute_charge_from_pdb(pdb_file)
-    # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
-    antechamber_path = shutil.which('antechamber')
-    try: 
-        antechamber_command = f'cd {antechamber_temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge} -nc {net_charge} -at sybyl -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
-        subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
-
-        # Once computation finished, delete the ligand temporary folder
-        shutil.rmtree(antechamber_temp_folder)        
-            
-    except Exception as error:
-        print(error)
-    # # Compress the output file for storage
     output_tar_file = generate_tar_file(output_file)
         
     return output_file, output_tar_file
@@ -662,13 +636,36 @@ def pdbqt_from_mol2(mol2_file):
     
     return tar_pdbqt_file
 
-def store_file_as_blob(db,table_name,colname,tar_pdb_file,row):
+def store_file_as_blob(db,table_name,colname,file,row):
     conn = tidyscreen.connect_to_db(db)
     cursor = conn.cursor()
     id = row['id']
     # Will store the '.pdb' file as a blob object into the database
-    cursor.execute(f"UPDATE {table_name} SET {colname} = ? WHERE id = {id};",(tar_pdb_file,))
+    cursor.execute(f"UPDATE {table_name} SET {colname} = ? WHERE id = {id};",(file,))
     conn.commit()
+    conn.close()
+
+def store_file_as_blob_with_retry(db,table_name,colname,file,row,max_retries=50):
+    
+    for attempt in range(max_retries):
+        try:
+            conn = tidyscreen.connect_to_db(db)
+            conn.execute('PRAGMA journal_mode=WAL;') # Enable WAL mode for better concurrency
+            cursor = conn.cursor()
+            id = row['id']
+            # Will store the '.pdb' file as a blob object into the database
+            cursor.execute(f"UPDATE {table_name} SET {colname} = ? WHERE id = {id};",(file,))
+            conn.commit()
+            conn.close()
+            break  # Exit the loop if successful
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                time.sleep(5)
+            else:
+                raise
+            
+    else:
+        raise Exception("Failed to write after several retries.")
 
 def store_string_in_column(db,table_name,colname,string,row):
     conn = tidyscreen.connect_to_db(db)
@@ -837,15 +834,15 @@ def get_conformer_rank(confs, mol_hs, ps,conf_rank):
 
     return selected_mol
 
-def save_ligand_pdb_file(selected_mol,dir="/tmp"):
-    inchi_key = Chem.MolToInchiKey(selected_mol)
+def save_ligand_pdb_file(selected_mol,inchi_key,dir="/tmp"):
+    #inchi_key = Chem.MolToInchiKey(selected_mol)
     pdb_file = f'{dir}/{inchi_key}.pdb'
     
     Chem.MolToPDBFile(selected_mol,pdb_file)
 
     clean_pdb_records(pdb_file)
     
-    return pdb_file, inchi_key
+    return pdb_file
 
 def clean_pdb_records(pdb_file):
     with open(pdb_file, 'r') as file:
@@ -969,7 +966,7 @@ def create_mols_columns(conn, table_name,list_mol_objects_colnames,list_mol_obje
 def compute_and_store_pdb(row,db,table_name,temp_dir,conf_rank,timeout):
     # Prepare and store the corresponding .pdb file
     try:
-        pdb_file, tar_pdb_file, net_charge = general_functions.timeout_function(pdb_from_smiles,(row["SMILES"],temp_dir,conf_rank),timeout=timeout,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdb_from_smiles' computation"])
+        pdb_file, tar_pdb_file, net_charge = general_functions.timeout_function(pdb_from_smiles,(row["SMILES"],row["inchi_key"],temp_dir,conf_rank),timeout=timeout,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdb_from_smiles' computation"])
         store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
     except Exception as error:
         fail_message = f"Failed at .pdb molecule computation step - Mol id: {row['id']} - deleted from {table_name}"
@@ -978,7 +975,7 @@ def compute_and_store_pdb(row,db,table_name,temp_dir,conf_rank,timeout):
 def compute_and_store_pdb_2(row,db,table_name,temp_dir):
     # Prepare and store the corresponding .pdb file
     try:
-        pdb_file, tar_pdb_file, net_charge = pdb_from_smiles(row["SMILES"],temp_dir)
+        pdb_file, tar_pdb_file, net_charge = pdb_from_smiles(row["SMILES"],row["inchi_key"],temp_dir)
         store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
     except Exception as error:
         fail_message = f"Failed at .pdb molecule computation step - Mol id: {row['id']}"
@@ -989,8 +986,9 @@ def compute_and_store_pdb_safetime(row,db,table_name,temp_dir):
     try:
         while True:
             #pdb_file, tar_pdb_file, net_charge = pdb_from_smiles(row["SMILES"],temp_dir)
-            pdb_file, tar_pdb_file, net_charge = pdb_from_smiles_safetime(row["SMILES"],temp_dir)
-            store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
+            pdb_file, tar_pdb_file, net_charge = pdb_from_smiles_safetime(row["SMILES"],row["inchi_key"],temp_dir)
+            #store_file_as_blob(db,table_name,'pdb_file',tar_pdb_file,row)
+            store_file_as_blob_with_retry(db,table_name,'pdb_file',tar_pdb_file,row)
             if time.time() - start > 1:
                 print("Timed out by internal function")
     
@@ -1007,16 +1005,19 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
             # Compute and store in the db the sybyl type mol2
             sybyl_mol2_output_file, sybyl_output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],charge,temp_dir)
             # Store the Sybyl like file
-            store_file_as_blob(db,table_name,'mol2_file_sybyl',sybyl_output_tar_file,row)
+            #store_file_as_blob(db,table_name,'mol2_file_sybyl',sybyl_output_tar_file,row)
+            store_file_as_blob_with_retry(db,table_name,'mol2_file_sybyl',sybyl_output_tar_file,row)
             
             # Compute and store in the db the gaff type mol2
             gaff_mol2_output_file, gaff_output_tar_file = gaff_mol2_from_pdb(row["inchi_key"],charge,temp_dir)
             # Store the GAFF like file
-            store_file_as_blob(db,table_name,'mol2_file_gaff',gaff_output_tar_file,row)
+            #store_file_as_blob(db,table_name,'mol2_file_gaff',gaff_output_tar_file,row)
+            store_file_as_blob_with_retry(db,table_name,'mol2_file_gaff',gaff_output_tar_file,row)
             # Compute the frcmod file
             output_tar_frcmod = compute_frcmod_file(gaff_mol2_output_file,at="gaff")
             # Store the frcmod file
-            store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
+            #store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
+            store_file_as_blob_with_retry(db,table_name,'frcmod_file',output_tar_frcmod,row)
             # Store the charge model used
             store_string_in_column(db,table_name,"charge_model",charge,row)
         
@@ -1025,11 +1026,13 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
             charge_array = compute_bbc_ml_array(row["SMILES"],row["inchi_key"],temp_dir)
             # Compute the charge using a fake 'gas' model to be replaced computing SYBYL atom types
             sybyl_mol2_output_file, sybyl_output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],"gas",temp_dir)
+    
             # Replace the charges on the .mol2 files using the precomputed bbc-ml charges
             sybyl_replaced_mol2_file = general_functions.replace_charge_on_mol2_file(sybyl_mol2_output_file,charge_array)
             sybyl_new_tar_file = generate_tar_file(sybyl_replaced_mol2_file)
             # Store the Sybyl like file
-            store_file_as_blob(db,table_name,'mol2_file_sybyl',sybyl_new_tar_file,row)
+            #store_file_as_blob(db,table_name,'mol2_file_sybyl',sybyl_new_tar_file,row)
+            store_file_as_blob_with_retry(db,table_name,'mol2_file_sybyl',sybyl_new_tar_file,row)
         
             # Compute the charge using a fake 'gas' model to be replaced computing GAFF atom types
             gaff_mol2_output_file, gaff_output_tar_file = gaff_mol2_from_pdb(row["inchi_key"],"gas",temp_dir)                          
@@ -1037,11 +1040,15 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
             gaff_replaced_mol2_file = general_functions.replace_charge_on_mol2_file(gaff_mol2_output_file,charge_array)
             gaff_new_tar_file = generate_tar_file(gaff_replaced_mol2_file)
             # Store the GAFF like file
-            store_file_as_blob(db,table_name,'mol2_file_gaff',gaff_new_tar_file,row)
+            #store_file_as_blob(db,table_name,'mol2_file_gaff',gaff_new_tar_file,row)
+            store_file_as_blob_with_retry(db,table_name,'mol2_file_gaff',gaff_new_tar_file,row)
+            
             # Compute the frcmod file
             output_tar_frcmod = compute_frcmod_file(gaff_replaced_mol2_file,at="gaff")
             # Store the frcmod file
-            store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
+            #store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
+            store_file_as_blob_with_retry(db,table_name,'frcmod_file',output_tar_frcmod,row)
+            
             # Store the charge model used
             store_string_in_column(db,table_name,"charge_model",charge,row)
             
@@ -1054,6 +1061,30 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
     except Exception as error:
         fail_message = f"Failed at .mol2 sybyl atom type computation step - Mol id: {row['id']}"
         general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)
+
+def sybyl_mol2_from_pdb(inchi_key,charge,temp_dir):
+    pdb_file = f"{temp_dir}/{inchi_key}.pdb"
+    output_file = f"{temp_dir}/{inchi_key}_sybyl.mol2"
+    # Since Antechamber creates temporary files for the calculation, and they should not overwrite each other when executing in parallel, create a temporary folder following the molecule InChIKey, 'cd' into it and run the computation.
+    antechamber_temp_folder = f"{temp_dir}/{inchi_key}"
+    os.makedirs(antechamber_temp_folder,exist_ok=True) # Create the corresponding temp directory
+    # Compute the ligand net charge
+    net_charge = compute_charge_from_pdb(pdb_file)
+    # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
+    antechamber_path = shutil.which('antechamber')
+    try: 
+        antechamber_command = f'cd {antechamber_temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge} -nc {net_charge} -at sybyl -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
+        subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
+
+        # Once computation finished, delete the ligand temporary folder
+        shutil.rmtree(antechamber_temp_folder)        
+            
+    except Exception as error:
+        print(error)
+    # # Compress the output file for storage
+    output_tar_file = generate_tar_file(output_file)
+        
+    return output_file, output_tar_file
 
 def compute_charge_from_pdb(pdb_file):
     mol = Chem.MolFromPDBFile(pdb_file, removeHs=False) 
@@ -1085,6 +1116,7 @@ def compute_and_store_pdbqt(row,db,table_name,temp_dir):
         # Prepare and store the corresponding .pdbqt file
         tar_pdbqt_file = pdbqt_from_mol2(f"{temp_dir}/{row['inchi_key']}_sybyl.mol2")
         store_file_as_blob(db,table_name,'pdbqt_file',tar_pdbqt_file,row)
+    
     except Exception as error:
         fail_message = f"Failed at .pdbqt molecule computation step - Mol id: {row['id']}"
         general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)    
@@ -1124,7 +1156,6 @@ def run_with_hard_timeout(func, args=(), kwargs=None, timeout=5):
         p.join()
         return None
     
-    print("termine")
     #return True  # or return a result via a multiprocessing.Queue
     
 def compute_bbc_ml_array(smiles,inchi_key,temp_dir):

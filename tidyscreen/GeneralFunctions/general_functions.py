@@ -218,14 +218,16 @@ def csv_reader(file):
     
     df = pd.read_csv(file,header=None,index_col=False)
     
+    print(df)
+    
     # First row, first column (i.e. the first SMILES)
     first_element = df.iloc[0, 0]  
     
-    # First row, first column (i.e. the first SMILES)
-    second_element = df.iloc[1, 0]
-    
-    print(first_element)
-    print(second_element)
+    try:
+        # First row, first column (i.e. the first SMILES)
+        second_element = df.iloc[1, 0]
+    except:
+        second_element = None
     
     return target_table_name, df, first_element, second_element
 
