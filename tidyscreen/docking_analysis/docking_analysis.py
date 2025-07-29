@@ -27,7 +27,7 @@ class DockingAnalysis:
             self.amberhome = amberhome
     
     
-    def process_docking_assay(self,assay_id,max_poses=10,vmd_path=None):
+    def process_docking_assay(self, assay_id, max_poses=10, vmd_path=None, extract_poses=0):
         registries_db = f"{self.docking_registers_path}/docking_registries.db"
         # Check if the 'assay_id' existis in docking registries
         docking_analysis_utils.check_docking_assay(registries_db,assay_id)
@@ -36,9 +36,10 @@ class DockingAnalysis:
         results_db_file = docking_analysis_utils.process_dlg_files(assay_folder,assay_id,max_poses)
         # Add docking subposes in database
         docking_analysis_utils.add_docking_subposes_nbr(results_db_file)
-        # Extract 1 pdb pose per cluster
-        print(f"\n Extracting '{max_poses}' PDB poses per cluster \n")
-        docking_analysis_utils.extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses,vmd_path)
+        if extract_poses == 1:
+            # Extract 1 pdb pose per cluster
+            print(f"\n Extracting '{max_poses}' PDB poses per cluster \n")
+            docking_analysis_utils.extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses,vmd_path)
     
     def compute_fingerprints_for_docked_pose(self, assay_id, results_pose_id, mmgbsa=1, prolif=1, clean_files=1, clean_folder=1, solvent="implicit", min_steps=5000, store_docked_poses=1, iteration=1,  ligresname="UNL"):
     ### Start to log the time
