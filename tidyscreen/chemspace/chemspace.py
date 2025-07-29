@@ -30,7 +30,6 @@ class ChemSpace:
         """
         # Read the csv file and check if the first element is a valid SMILES        
         target_table_name, df, first_element, second_element = general_functions.csv_reader(file) 
-        
         # Check if the first element is a valid SMILES - Will stop the process if not
         df = general_functions.check_smiles(df,first_element,second_element)
         # Make all the processing on the generated df (sanitization, enumeration, inchi key calculation)
@@ -58,7 +57,7 @@ class ChemSpace:
         
         print(f"Successfully depicted ligands in table: '{output_path}'")
 
-    def generate_mols_in_table(self,table_name,charge="bcc-ml",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10,delete_temp_dir=1):
+    def generate_mols_in_table(self,table_name,charge="bcc-ml",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10,delete_temp_dir=1,delete_nulls=1):
         """
         Will process all SMILES present in a given table an generate molecules stored in different formats
         """
@@ -82,8 +81,10 @@ class ChemSpace:
             # Compute and store the .pdb files using pandarallel
             pandarallel.initialize(progress_bar=True) # Activate Progress Bar
             df.parallel_apply(lambda row: cs_utils.compute_and_store_pdb(row,db,table_name,temp_dir,conf_rank,timeout), axis=1)
-            # Delete all rows in the target table in which .mol2 computation may have failed (errors were registered accondingly)
-            general_functions.delete_nulls_table(db,table_name,"pdb_file")
+            
+            if delete_nulls == 1:
+                # Delete all rows in the target table in which .mol2 computation may have failed (errors were registered accondingly)
+                general_functions.delete_nulls_table(db,table_name,"pdb_file")
         if mol2 == 1:
             print("Computing .mol2 files for ligands")
             # Get the atom types dictionary for sybyl to gaff2 conversion
@@ -91,14 +92,19 @@ class ChemSpace:
             # Compute and store the sybyl mol2 files using pandarallel
             pandarallel.initialize(progress_bar=True) # Activate Progress Bar
             df.parallel_apply(lambda row: cs_utils.compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict), axis=1)
-            # Purge the rows in which the .mol2 computation may have failed
-            general_functions.delete_nulls_table(db,table_name,"mol2_file_sybyl")
-            general_functions.delete_nulls_table(db,table_name,"mol2_file_gaff")
+            
+            if delete_nulls == 1:
+                ## Purge the rows in which the .mol2 computation may have failed
+                general_functions.delete_nulls_table(db,table_name,"mol2_file_sybyl")
+                general_functions.delete_nulls_table(db,table_name,"mol2_file_gaff")
+        
         if pdbqt == 1:
             print("Computing .pdbqt files for ligands")
             df.parallel_apply(lambda row: cs_utils.compute_and_store_pdbqt(row,db,table_name,temp_dir), axis=1)
-            # Purge the rows in which the .pdbqt computation may have failed
-            general_functions.delete_nulls_table(db,table_name,"mol2_file_sybyl")
+            
+            if delete_nulls == 1:
+                # Purge the rows in which the .pdbqt computation may have failed
+                general_functions.delete_nulls_table(db,table_name,"mol2_file_sybyl")
         
         if delete_temp_dir == 1:
             # Delete the temp directory
