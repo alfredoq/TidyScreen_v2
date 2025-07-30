@@ -153,7 +153,6 @@ def extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses,vmd_path):
             process_with_vmd(input_pdb_file,output_pdb_file, vmd_path)
             # Rename the output file to the original one
             os.rename(output_pdb_file, input_pdb_file)
-        
 
 def process_with_vmd(input_pdb_file,output_pdb_file,vmd_path):
     # This will process the .pdb file with VMD to make it compatible with python 3D viewers
@@ -173,7 +172,6 @@ quit
         subprocess.run([vmd_path, '-dispdev', 'text', '-e', tcl_path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     finally:
         os.remove(tcl_path)
-
 
 def get_bash_alias(alias_name):
     # This command sources .bashrc and prints the alias value
@@ -697,5 +695,7 @@ def compute_tleap_vs_cristal_reference_dict(receptor_filename, main_fingerprints
     
     
     return tleap_vs_cristal_resnames_dict
+    
+
     
     

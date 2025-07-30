@@ -8,7 +8,10 @@ import sqlite3
 from datetime import datetime
 import os
 import shutil
-
+import glob
+import py3Dmol
+import tempfile
+import webbrowser
 
 def process_poses_list(assay_id,docking_results_db,training_set_db,pose_id_list,table,flag):
     # Connect to the results database
@@ -223,3 +226,120 @@ def retrieve_pdb_files(docking_assays_path,output_dir,members_id):
                             # Save with the name from the database
                             with open(f"{pdb_filename}", "wb") as out_file:
                                 out_file.write(extracted.read())
+                                
+                                
+                                
+def check_fingerprints_results_in_db(db):
+    """
+    This function will check if the prolif fingerprints table has been computed and stored in the database
+    """
+    
+    conn = tidyscreen.connect_to_db(db)
+    cursor = conn.cursor()
+    
+    try:
+        # Select the Pose_IDs from the prolif_fingerprints table
+        cursor.execute(f"SELECT Pose_ID FROM prolif_fingerprints ")
+        # Count the number of rows
+        rows_count = len(cursor.fetchall())
+        
+        return rows_count
+    except Exception as e:
+        print(f"Error checking fingerprints in database: {e}. Stopping ...")
+        sys.exit(1)
+
+def check_docked_poses(assay_folder):
+    """
+    This function will check if the docked poses are stored within the folder
+    """
+    
+    folder = f"{assay_folder}/docked_1_per_cluster"
+    file_count = len(glob.glob(os.path.join(folder, '*.pdb')))
+    
+    return file_count
+
+def retrieve_fingerprints_results(db):
+    
+    conn = tidyscreen.connect_to_db(db)
+    # Select the Pose_IDs from the prolif_fingerprints table
+    query = "SELECT Pose_ID, sub_pose FROM prolif_fingerprints"
+    
+    df = pd.read_sql_query(query, conn)
+    
+    conn.close()
+    
+    return df
+    
+
+def construct_poses_flag_lists(df, reference_pdb_file, assay_folder):
+    
+    positive_binders_list = []
+    negative_binders_list = []
+    
+    for index, row in df.iterrows():
+        pose_id = row['Pose_ID']
+        sub_pose = row['sub_pose']
+        
+        pose_pdb_file = f"{assay_folder}/docked_1_per_cluster/{sub_pose}.pdb"
+        pose_name = f"{sub_pose}.pdb"
+        
+        
+        # Show the 3D visualization and flag the pose
+        selected_flag = show_2_molecules_3d_and_flag(reference_pdb_file, pose_pdb_file, pose_name)
+  
+        # Operate based on the selected flag
+        if selected_flag == '+':
+            positive_binders_list.append(pose_id)
+        elif selected_flag == '-':
+            negative_binders_list.append(pose_id)
+        elif selected_flag == 's':
+            print(f"Skipping pose {pose_id} for sub_pose {sub_pose}.")
+            continue
+        elif selected_flag == 'f':
+            print("Finished flagging poses.")
+            break
+        
+    return positive_binders_list, negative_binders_list
+  
+  
+  
+        
+def show_2_molecules_3d_and_flag(reference_pdb, molecule_pdb, pose_name):
+    
+    ref_pdb_str = load_pdb_file(reference_pdb)
+    mol_pdb_str = load_pdb_file(molecule_pdb)
+
+    view = py3Dmol.view(width=800, height=600)
+    view.addModel(ref_pdb_str, 'pdb')
+    view.setStyle({'model': 0}, {'stick': {'colorscheme': 'greenCarbon'}})
+    view.addModel(mol_pdb_str, 'pdb')
+    view.setStyle({'model': 1}, {'stick': {'colorscheme': 'cyanCarbon'}})
+    view.addLabel("Your text here", {'position': {'x':0, 'y':0, 'z':0}, 'backgroundColor': 'black', 'fontColor': 'black','fontSize': 50})
+    view.zoomTo()
+  
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.html',prefix=f"{pose_name}_") as f:
+        html = view._make_html()
+        f.write(html)
+        temp_html_path = f.name
+    webbrowser.open('file://' + os.path.abspath(temp_html_path))
+    print(f"Flaging the pose for {pose_name} file {f.name}")
+    
+    selected_flag = request_flag_from_user()
+    
+    os.remove(temp_html_path)
+    
+    return selected_flag
+    
+
+def request_flag_from_user():
+    valid_inputs = ['+', '-', 's', 'f']
+    while True:
+        user_input = input("Flag the pose as '+' or '-' (positive or negative). 's' to skip, 'f' to finish flagging: ")
+        if user_input in valid_inputs:
+            return user_input
+        else:
+            print(f"Invalid input. Please enter one of {valid_inputs}.")
+    
+def load_pdb_file(pdb_path):
+    with open(pdb_path, 'r') as f:
+        return f.read()

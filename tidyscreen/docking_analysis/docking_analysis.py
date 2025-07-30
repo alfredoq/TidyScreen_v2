@@ -7,6 +7,7 @@ import time
 import shutil
 import sys
 import json
+import py3Dmol
 
 class DockingAnalysis:
     
@@ -165,4 +166,8 @@ class DockingAnalysis:
         if clean_assay_folder == 1:
             shutil.rmtree(f"{assay_folder}/fingerprints_analyses")
                 
+    
+    
+        
+    
     

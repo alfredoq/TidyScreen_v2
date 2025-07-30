@@ -2,6 +2,7 @@ from tidyscreen import tidyscreen as tidyscreen
 from tidyscreen.ml import model_development_utils as mdevel_utils
 import os
 import shutil
+import sys
 
 class ModelDevelopment:
     def __init__(self, project):
@@ -60,4 +61,41 @@ class ModelDevelopment:
             mdevel_utils.retrieve_pdb_files(docking_assays_path,output_dir,members_id)
         
         print(f"Training set retrieved and saved successfully to: {output_dir}.")
+    
+    
+    def visualize_and_flag_docked_poses(self,assay_id,reference_pdb_file):
+        """
+        This function will generate a 3D visualization of the docked pose and allow the user to flag it as positive or negative binding pose.
+        """
+        # Setup the assay folder path variable
+        assay_folder = f"{self.docking_assays_path}/assay_{assay_id}"
+        assay_db = self.docking_assays_path + f'/assay_{assay_id}/assay_{assay_id}.db'
         
+        # Check if the prolif fingerprints table exists - > return number of registers
+        fingerprints_in_db = mdevel_utils.check_fingerprints_results_in_db(assay_db)    
+        
+        # Check if the docked poses are stored within the folder - > return the number of docked poses
+        number_of_docked_poses = mdevel_utils.check_docked_poses(assay_folder)
+        
+        # Check if fingerprints registers match the number of docked poses 
+        
+        if fingerprints_in_db != number_of_docked_poses:
+            print(f"Error: The number of fingerprints ({fingerprints_in_db}) does not match the number of docked poses ({number_of_docked_poses}).")
+            sys.exit(1)
+            return
+        
+        # Create dataframe containing the subposes and their corresponding Pose_IDs - > return the dataframe
+        
+        df = mdevel_utils.retrieve_fingerprints_results(assay_db)
+        
+        # Process the dataframe to generate a 3D visualization of the docked pose and create flag lists - > returns the positive and negative lists
+        
+        positive_binders_list, negative_binders_list = mdevel_utils.construct_poses_flag_lists(df, reference_pdb_file, assay_folder)
+        
+        # Store the positive and negative lists in the database
+        if len(positive_binders_list) > 0:
+            ModelDevelopment.flag_poses_as_positive(self, [assay_id], [positive_binders_list])
+        if len(negative_binders_list) > 0:
+            ModelDevelopment.flag_poses_as_negative(self, [assay_id], [negative_binders_list])
+        
+        print("Flagging completed successfully.")
