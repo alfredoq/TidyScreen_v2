@@ -309,7 +309,7 @@ def show_2_molecules_3d_and_flag(reference_pdb, molecule_pdb, pose_name):
     ref_pdb_str = load_pdb_file(reference_pdb)
     mol_pdb_str = load_pdb_file(molecule_pdb)
 
-    view = py3Dmol.view(width=800, height=600)
+    view = py3Dmol.view(width=1000, height=1000)
     view.addModel(ref_pdb_str, 'pdb')
     view.setStyle({'model': 0}, {'stick': {'colorscheme': 'greenCarbon'}})
     view.addModel(mol_pdb_str, 'pdb')
@@ -321,6 +321,9 @@ def show_2_molecules_3d_and_flag(reference_pdb, molecule_pdb, pose_name):
         html = view._make_html()
         f.write(html)
         temp_html_path = f.name
+        
+        
+        
     webbrowser.open('file://' + os.path.abspath(temp_html_path))
     print(f"Flaging the pose for {pose_name} file {f.name}")
     
