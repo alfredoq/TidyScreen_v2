@@ -12,6 +12,7 @@ import glob
 import py3Dmol
 import tempfile
 import webbrowser
+import json
 
 def process_poses_list(assay_id,docking_results_db,training_set_db,pose_id_list,table,flag):
     # Connect to the results database
@@ -19,7 +20,9 @@ def process_poses_list(assay_id,docking_results_db,training_set_db,pose_id_list,
     cursor = conn.cursor()
      
     for pose in pose_id_list:
+        # Retrieve the pose information from the docking results database
         ligname, sub_pose, fingerprint_csv_file = retrieve_pose(cursor,pose)
+        
         store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_file,table,flag,pose)
         
 def retrieve_pose(cursor,pose):
@@ -27,10 +30,15 @@ def retrieve_pose(cursor,pose):
     cursor.execute("SELECT LigName, sub_pose, prolif_csv_file FROM prolif_fingerprints WHERE Pose_ID = ?", (pose,))
     result = cursor.fetchall()
     
+    if len(result) == 0:
+        print(f"No data found for pose ID: {pose}")
+        return None, None, None
+    
     for ligname, sub_pose, blob in result:
         # Convert BLOB to file-like object
         file_like = io.BytesIO(blob)
         csv_filename = f"/tmp/{sub_pose}.csv"
+        
         # Open the tar file
     with tarfile.open(fileobj=file_like, mode='r:*') as tar:
         for member in tar.getmembers():
@@ -96,35 +104,41 @@ def combine_fingerprints(training_set_db):
     assay_pose_dict = {}
     
     for table in tables:
-        # Fetch de data required to construct the dataframe in the POSITIVE table
-        cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table}")
-        rows = cursor.fetchall()
-
-        # Create a dictionary to store the assay_id and pose_nbr per table
-        assay_pose_dict[table] = {}    
-
-        assay_pose_list = []
-
-        for row in rows:
-            assay_id, pose_nbr, ligname, sub_pose, fingerprint = row
+        try: 
         
-            # Unpickle the blob to get the embedded DataFrame
-            df_fingerprint = pickle.load(io.BytesIO(fingerprint))
+            # Fetch de data required to construct the dataframe in the POSITIVE table
+            cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table}")
+            rows = cursor.fetchall()
+
+            # Create a dictionary to store the assay_id and pose_nbr per table
+            assay_pose_dict[table] = {}    
+
+            assay_pose_list = []
+
+            for row in rows:
+                assay_id, pose_nbr, ligname, sub_pose, fingerprint = row
             
-            # Add extra information to the fingerprint dataframe
-            df_fingerprint.insert(0, 'sub_pose', sub_pose)
-            df_fingerprint.insert(0, 'ligname', ligname)
-            df_fingerprint.insert(0, 'assay_id', assay_id)
+                # Unpickle the blob to get the embedded DataFrame
+                df_fingerprint = pickle.load(io.BytesIO(fingerprint))
+                
+                # Add extra information to the fingerprint dataframe
+                df_fingerprint.insert(0, 'sub_pose', sub_pose)
+                df_fingerprint.insert(0, 'ligname', ligname)
+                df_fingerprint.insert(0, 'assay_id', assay_id)
+                
+                # Add the df for the current iteration
+                combined_rows.append(df_fingerprint)
             
-            # Add the df for the current iteration
-            combined_rows.append(df_fingerprint)
-        
-            assay_pose_list.append((assay_id,pose_nbr))
+                assay_pose_list.append((assay_id,pose_nbr))
 
-        assay_pose_dict[table] = assay_pose_list
-        
-        # Concatenate all the rows into one DataFrame
-        training_set_df = pd.concat(combined_rows, ignore_index=True)
+            assay_pose_dict[table] = assay_pose_list
+            
+            # Concatenate all the rows into one DataFrame
+            training_set_df = pd.concat(combined_rows, ignore_index=True)
+
+        except:
+            print(f"No table named '{table}' found in the database. Skipping...")
+            continue
     
     return training_set_df, assay_pose_dict
 
@@ -227,8 +241,6 @@ def retrieve_pdb_files(docking_assays_path,output_dir,members_id):
                             with open(f"{pdb_filename}", "wb") as out_file:
                                 out_file.write(extracted.read())
                                 
-                                
-                                
 def check_fingerprints_results_in_db(db):
     """
     This function will check if the prolif fingerprints table has been computed and stored in the database
@@ -269,7 +281,6 @@ def retrieve_fingerprints_results(db):
     conn.close()
     
     return df
-    
 
 def construct_poses_flag_lists(df, reference_pdb_file, assay_folder):
     
@@ -300,9 +311,6 @@ def construct_poses_flag_lists(df, reference_pdb_file, assay_folder):
             break
         
     return positive_binders_list, negative_binders_list
-  
-  
-  
         
 def show_2_molecules_3d_and_flag(reference_pdb, molecule_pdb, pose_name):
     
@@ -332,7 +340,6 @@ def show_2_molecules_3d_and_flag(reference_pdb, molecule_pdb, pose_name):
     os.remove(temp_html_path)
     
     return selected_flag
-    
 
 def request_flag_from_user():
     valid_inputs = ['+', '-', 's', 'f']
@@ -346,3 +353,22 @@ def request_flag_from_user():
 def load_pdb_file(pdb_path):
     with open(pdb_path, 'r') as f:
         return f.read()
+    
+def register_fingerprints_addition(db, assays_id_list,poses_id,flag):
+    """
+    This function will register the addition of a fingerprint to the training set
+    """
+    
+    # Connect to the database
+    conn = tidyscreen.connect_to_db(db)
+    cursor = conn.cursor()
+    
+    assays_id_list_str = json.dumps(assays_id_list)
+    poses_id_list_str = json.dumps(poses_id)
+    
+    # Create the fingerprints_additions table if it does not exist
+    cursor.execute('CREATE TABLE IF NOT EXISTS fingerprints_additions (register_action INTEGER PRIMARY KEY AUTOINCREMENT, assays_id_list TEXT, poses_id_lists TEXT, flag TEXT, executed_at DATETIME DEFAULT (CURRENT_TIMESTAMP))')
+    
+    cursor.execute("INSERT INTO fingerprints_additions (assays_id_list, poses_id_lists, flag) VALUES (?,?,?)", (assays_id_list_str,poses_id_list_str,flag,))
+    conn.commit()
+    conn.close()

@@ -59,6 +59,7 @@ class DockingAnalysis:
         if iteration == 1:
             # Create a tleap vs cristal reference dictionary
             tleap_vs_cristal_reference_dict = docking_analysis_utils.compute_tleap_vs_cristal_reference_dict(receptor_filename, f"{assay_folder}/fingerprints_analyses")
+            
         else:
             # Load the existing tleap vs cristal reference dictionary
             with open(f"{main_fingerprints_folder}/tleap_vs_cristal_resnames_dict.csv", 'r') as f:
@@ -107,12 +108,13 @@ class DockingAnalysis:
             # Compute the fingerprint for the docked pose
             figerprints_df = docking_analysis_utils.compute_prolif_fps_for_docked_pose(prmtop_file,crd_file,interactions_list,tleap_vs_cristal_reference_dict)
             
+                
             # Map the fingerprint df to the crystallographic numbering
             df_mapped_to_cristal = general_functions.map_prolif_fingerprints_df_to_crystal_sequence(figerprints_df,tleap_vs_cristal_reference_dict)
             
             # Append the mapped row to the reference the whole protein interactions dataframe
             merged_df = general_functions.merge_calculated_and_reference_fingerprints_df(df_mapped_to_cristal,all_residues_plf_df)
-            
+    
             # Save the interactions df to the corresponding assay folder
             prolif_output_csv = f"{output_path}/prolif_fingerprints_renum.csv"
             merged_df.to_csv(prolif_output_csv,index=False)

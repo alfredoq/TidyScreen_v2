@@ -22,8 +22,11 @@ class ModelDevelopment:
             # Get the list of poses corresponding to the assay_id
             poses_id_list = pose_id_list_of_lists[index]
     
-            ### Process the list of poses and store them into the target db
+            # ### Process the list of poses and store them into the target db
             mdevel_utils.process_poses_list(assay_id,docking_results_db,training_set_db,poses_id_list,"positives",1)
+        
+            ### Store the fingerprint registration
+            mdevel_utils.register_fingerprints_addition(training_set_db, assay_id_list,pose_id_list_of_lists,"positives")
         
     def flag_poses_as_negative(self,assay_id_list,pose_id_list_of_lists):
         
@@ -38,6 +41,9 @@ class ModelDevelopment:
         
             ### Process the list of poses and store them into the target db
             mdevel_utils.process_poses_list(assay_id,docking_results_db,training_set_db,poses_id_list,"negatives",0)
+            
+            ### Store the fingerprint registration
+            mdevel_utils.register_fingerprints_addition(training_set_db, assay_id_list,pose_id_list_of_lists,"negatives")
     
     def construct_taining_set(self):
         # Define the fingerprints db
@@ -61,7 +67,6 @@ class ModelDevelopment:
             mdevel_utils.retrieve_pdb_files(docking_assays_path,output_dir,members_id)
         
         print(f"Training set retrieved and saved successfully to: {output_dir}.")
-    
     
     def visualize_and_flag_docked_poses(self,assay_id,reference_pdb_file):
         """
