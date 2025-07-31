@@ -14,7 +14,7 @@ import tempfile
 import webbrowser
 import json
 
-def process_poses_list(assay_id,docking_results_db,training_set_db,pose_id_list,table,flag):
+def process_poses_list(assay_id,docking_results_db,training_set_db,pose_id_list,table,flag,comment):
     # Connect to the results database
     conn = tidyscreen.connect_to_db(docking_results_db)
     cursor = conn.cursor()
@@ -23,7 +23,7 @@ def process_poses_list(assay_id,docking_results_db,training_set_db,pose_id_list,
         # Retrieve the pose information from the docking results database
         ligname, sub_pose, fingerprint_csv_file = retrieve_pose(cursor,pose)
         
-        store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_file,table,flag,pose)
+        store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_file,table,flag,pose,comment)
         
 def retrieve_pose(cursor,pose):
     # Retrieve the prolif blob object stored in the results table
@@ -51,7 +51,7 @@ def retrieve_pose(cursor,pose):
     
     return ligname, sub_pose, csv_filename
     
-def store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_file,table,flag,pose):
+def store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_file,table,flag,pose,comment):
     # Check if the fingerprint is duplicated in the table
     exists = check_duplicated_fingerprint(training_set_db,assay_id,ligname,sub_pose,table,pose)
     
@@ -68,8 +68,9 @@ def store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_
         # Connect to the target database and store the fingerprint in the corresponding table
         conn = tidyscreen.connect_to_db(training_set_db)
         cursor = conn.cursor()
-        
-        cursor.execute(f"INSERT INTO {table} (assay_id, pose_nbr, ligname, sub_pose, fingerprint) VALUES (?,?,?,?,?)", (assay_id,pose,ligname,sub_pose,df_blob,))
+       
+        # Insert the fingerprint into the table    
+        cursor.execute(f"INSERT INTO {table} (assay_id, pose_nbr, ligname, sub_pose, fingerprint, comment) VALUES (?,?,?,?,?,?)", (assay_id,pose,ligname,sub_pose,df_blob,comment,))
         conn.commit()
         conn.close()
     
@@ -78,7 +79,8 @@ def check_duplicated_fingerprint(training_set_db,assay_id,ligname,sub_pose,table
     cursor = conn.cursor()
     
     # Create the corresponding table if it does not exist
-    cursor.execute(f"CREATE TABLE IF NOT EXISTS {table} (assay_id INTEGER, pose_nbr INTEGER, ligname TEXT, sub_pose TEXT, fingerprint BLOB)")
+    #cursor.execute(f"CREATE TABLE IF NOT EXISTS {table} (assay_id INTEGER, pose_nbr INTEGER, ligname TEXT, sub_pose TEXT, fingerprint BLOB)")
+    cursor.execute(f'CREATE TABLE IF NOT EXISTS {table} (assay_id INTEGER, pose_nbr INTEGER, ligname TEXT, sub_pose TEXT, fingerprint BLOB, added_on DATETIME DEFAULT (CURRENT_TIMESTAMP), comment TEXT)')
     # Query if the a record matching already exists:
     cursor.execute(f"SELECT * FROM {table} WHERE assay_id = ? AND ligname = ? AND sub_pose = ?", (assay_id,ligname,sub_pose))
     

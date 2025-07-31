@@ -11,7 +11,7 @@ class ModelDevelopment:
         self.training_set_path = self.project.proj_folders_path["ml"]["training_sets"]
         self.training_set_db = f"{self.training_set_path}/training_sets.db"
     
-    def flag_poses_as_positive(self,assay_id_list,pose_id_list_of_lists):
+    def flag_poses_as_positive(self,assay_id_list,pose_id_list_of_lists,comment="manually flagged as positive"):
         
         # Loop over the list of assay_ids
         for index, assay_id in enumerate(assay_id_list):
@@ -23,12 +23,12 @@ class ModelDevelopment:
             poses_id_list = pose_id_list_of_lists[index]
     
             # ### Process the list of poses and store them into the target db
-            mdevel_utils.process_poses_list(assay_id,docking_results_db,training_set_db,poses_id_list,"positives",1)
+            mdevel_utils.process_poses_list(assay_id,docking_results_db,training_set_db,poses_id_list,"positives",1,comment)
         
             ### Store the fingerprint registration
             mdevel_utils.register_fingerprints_addition(training_set_db, assay_id_list,pose_id_list_of_lists,"positives")
         
-    def flag_poses_as_negative(self,assay_id_list,pose_id_list_of_lists):
+    def flag_poses_as_negative(self,assay_id_list,pose_id_list_of_lists,comment="manually flagged as negative"):
         
         # Loop over the list of assay_ids
         for index, assay_id in enumerate(assay_id_list):
@@ -40,7 +40,7 @@ class ModelDevelopment:
             poses_id_list = pose_id_list_of_lists[index]
         
             ### Process the list of poses and store them into the target db
-            mdevel_utils.process_poses_list(assay_id,docking_results_db,training_set_db,poses_id_list,"negatives",0)
+            mdevel_utils.process_poses_list(assay_id,docking_results_db,training_set_db,poses_id_list,"negatives",0,comment)
             
             ### Store the fingerprint registration
             mdevel_utils.register_fingerprints_addition(training_set_db, assay_id_list,pose_id_list_of_lists,"negatives")
@@ -99,8 +99,8 @@ class ModelDevelopment:
         
         # Store the positive and negative lists in the database
         if len(positive_binders_list) > 0:
-            ModelDevelopment.flag_poses_as_positive(self, [assay_id], [positive_binders_list])
+            ModelDevelopment.flag_poses_as_positive(self, [assay_id], [positive_binders_list], comment="flagged by serial viasualization")
         if len(negative_binders_list) > 0:
-            ModelDevelopment.flag_poses_as_negative(self, [assay_id], [negative_binders_list])
+            ModelDevelopment.flag_poses_as_negative(self, [assay_id], [negative_binders_list], comment="flagged by serial viasualization")
         
         print("Flagging completed successfully.")
