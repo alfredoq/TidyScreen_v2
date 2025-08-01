@@ -97,7 +97,6 @@ def check_duplicated_fingerprint(training_set_db,assay_id,ligname,sub_pose,table
 def combine_fingerprints(training_set_db, filter_by, assay_id, date_start, date_end, comment, fp_start, fp_end):
     conn = sqlite3.connect(training_set_db)
     cursor = conn.cursor()
-    
     # Container for final combined rows
     combined_rows = []
     
@@ -120,7 +119,6 @@ def combine_fingerprints(training_set_db, filter_by, assay_id, date_start, date_
                 # The the data matching the filter
                 cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table} WHERE assay_id = ?", (assay_id,))
                 rows = cursor.fetchall()
-
             elif filter_by == "datetime":
                 if date_start is None or date_end is None:
                     date_start = input("Please provide the start datetime (YYYY-MM-DD HH:MM:SS): ")
@@ -133,7 +131,7 @@ def combine_fingerprints(training_set_db, filter_by, assay_id, date_start, date_
                 if comment is None:
                     comment = input("Please provide the comment to filter by: ")
                 # The the data matching the filter
-                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table} WHERE comment LIKE ?", (comment,))
+                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table} WHERE comment LIKE ?", (f"%{comment}%",))
                 rows = cursor.fetchall()
 
             elif filter_by == "fp_range":
@@ -187,7 +185,7 @@ def store_training_set(training_set_db, training_set_df,assay_pose_dict):
     conn = tidyscreen.connect_to_db(training_set_db) 
     cursor = conn.cursor()
     # Create the projects table only if it does not exists
-    cursor.execute('CREATE TABLE IF NOT EXISTS training_datasets (set_id INTEGER PRIMARY KEY AUTOINCREMENT, date DATE, n_positives INTEGER, n_negative INTEGER, members_id BLOB, df_blob BLOB)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS training_datasets (set_id INTEGER PRIMARY KEY AUTOINCREMENT, n_positives INTEGER, n_negative INTEGER, members_id BLOB, df_blob BLOB, date DATETIME DEFAULT (CURRENT_TIMESTAMP))')
     conn.commit()
     
     # get the time of set preparation
@@ -207,7 +205,9 @@ def store_training_set(training_set_db, training_set_df,assay_pose_dict):
     df_blob = pickle.dumps(training_set_df)
     
     # Create a new entry in the table for the training set
-    cursor.execute('INSERT INTO training_datasets (date, n_positives, n_negative, members_id, df_blob) VALUES (?, ?, ?, ?, ?)', (current_date_formated, n_positives, n_negative, serialized_dict, df_blob))
+    cursor.execute('INSERT INTO training_datasets (n_positives, n_negative, members_id, df_blob) VALUES (?, ?, ?, ?)', (n_positives, n_negative, serialized_dict, df_blob))
+    
+    cursor.execute('CREATE TABLE IF NOT EXISTS training_datasets (set_id INTEGER PRIMARY KEY AUTOINCREMENT, n_positives INTEGER, n_negative INTEGER, members_id BLOB, df_blob BLOB, date DATETIME DEFAULT (CURRENT_TIMESTAMP))')
     
     conn.commit()
     conn.close()
