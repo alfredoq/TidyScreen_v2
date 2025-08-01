@@ -53,7 +53,7 @@ def retrieve_pose(cursor,pose):
     
 def store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_file,table,flag,pose,comment):
     # Check if the fingerprint is duplicated in the table
-    exists = check_duplicated_fingerprint(training_set_db,assay_id,ligname,sub_pose,table,pose)
+    exists = check_duplicated_fingerprint(training_set_db,assay_id,ligname,sub_pose,table,pose,comment)
     
     if exists == 1:
         print(f"The fingerprint record: '{pose}' corresponding to '{sub_pose}' from assay: '{assay_id}' has already been stored. Skipping storage...")
@@ -74,15 +74,16 @@ def store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_
         conn.commit()
         conn.close()
     
-def check_duplicated_fingerprint(training_set_db,assay_id,ligname,sub_pose,table,pose):
+def check_duplicated_fingerprint(training_set_db,assay_id,ligname,sub_pose,table,pose,comment):
     conn = tidyscreen.connect_to_db(training_set_db)
     cursor = conn.cursor()
     
     # Create the corresponding table if it does not exist
     #cursor.execute(f"CREATE TABLE IF NOT EXISTS {table} (assay_id INTEGER, pose_nbr INTEGER, ligname TEXT, sub_pose TEXT, fingerprint BLOB)")
-    cursor.execute(f'CREATE TABLE IF NOT EXISTS {table} (assay_id INTEGER, pose_nbr INTEGER, ligname TEXT, sub_pose TEXT, fingerprint BLOB, added_on DATETIME DEFAULT (CURRENT_TIMESTAMP), comment TEXT)')
+    cursor.execute(f'CREATE TABLE IF NOT EXISTS {table} (fp_id INTEGER PRIMARY KEY AUTOINCREMENT, assay_id INTEGER, pose_nbr INTEGER, ligname TEXT, sub_pose TEXT, fingerprint BLOB, added_on DATETIME DEFAULT (CURRENT_TIMESTAMP), comment TEXT)')
+    
     # Query if the a record matching already exists:
-    cursor.execute(f"SELECT * FROM {table} WHERE assay_id = ? AND ligname = ? AND sub_pose = ?", (assay_id,ligname,sub_pose))
+    cursor.execute(f"SELECT * FROM {table} WHERE assay_id = ? AND ligname = ? AND sub_pose = ? AND comment = ?", (assay_id,ligname,sub_pose,comment,))
     
     # Fetch the result
     result = cursor.fetchone()
@@ -93,7 +94,7 @@ def check_duplicated_fingerprint(training_set_db,assay_id,ligname,sub_pose,table
     else:
         return 0
         
-def combine_fingerprints(training_set_db):
+def combine_fingerprints(training_set_db, filter_by, assay_id, date_start, date_end, comment, fp_start, fp_end):
     conn = sqlite3.connect(training_set_db)
     cursor = conn.cursor()
     
@@ -108,9 +109,45 @@ def combine_fingerprints(training_set_db):
     for table in tables:
         try: 
         
-            # Fetch de data required to construct the dataframe in the POSITIVE table
-            cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table}")
-            rows = cursor.fetchall()
+            if filter_by == "all":
+                # The the data matching the filter
+                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table}")
+                rows = cursor.fetchall()
+
+            elif filter_by == "assay":
+                if assay_id is None:
+                    assay_id = input("Please provide the assay_id to filter by: ")
+                # The the data matching the filter
+                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table} WHERE assay_id = ?", (assay_id,))
+                rows = cursor.fetchall()
+
+            elif filter_by == "datetime":
+                if date_start is None or date_end is None:
+                    date_start = input("Please provide the start datetime (YYYY-MM-DD HH:MM:SS): ")
+                    date_end = input("Please provide the end date (YYYY-MM-DD HH:MM:SS): ")
+                # The the data matching the filter
+                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table} WHERE added_on >= ? AND added_on <= ?", (date_start,date_end,))
+                rows = cursor.fetchall()
+                
+            elif filter_by == "comment":
+                if comment is None:
+                    comment = input("Please provide the comment to filter by: ")
+                # The the data matching the filter
+                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table} WHERE comment LIKE ?", (comment,))
+                rows = cursor.fetchall()
+
+            elif filter_by == "fp_range":
+                if fp_start is None or fp_end is None:
+                    fp_start = int(input("Please provide the start fp_id: "))
+                    fp_end = int(input("Please provide the end fp_id: "))
+                # Retrieve the data matching the filter
+                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table} WHERE fp_id >= ? AND fp_id <= ?", (fp_start,fp_end,))
+                rows = cursor.fetchall()
+
+            else:
+                print(f"Filter type '{filter_by}' is not recognized. Please use 'all', 'assay', 'datetime', 'comment' or 'fp_range'.")
+                sys.exit(1)
+
 
             # Create a dictionary to store the assay_id and pose_nbr per table
             assay_pose_dict[table] = {}    
@@ -313,7 +350,65 @@ def construct_poses_flag_lists(df, reference_pdb_file, assay_folder):
             break
         
     return positive_binders_list, negative_binders_list
+
+def construct_poses_flag_lists_from_pdb(reference_pdb_file, pdb_files_list):
+    positive_binders_list = []
+    negative_binders_list = []
+    
+    for file in pdb_files_list:
+        fields = file.split('/')[-1].split('_')
+        pose_name = fields[0]+'_'+fields[1]  # Assuming the pose name is the second field
+        assay_id = fields[2]
+        pose_id = fields[4].split('.')[0]
         
+        # Show the 3D visualization and flag the pose
+        selected_flag = show_2_molecules_3d_and_flag(reference_pdb_file, file, pose_name)
+       
+        # Operate based on the selected flag
+        if selected_flag == '+':
+            positive_binders_list.append(pose_id)
+        elif selected_flag == '-':
+            negative_binders_list.append(pose_id)
+        elif selected_flag == 's':
+            print(f"Skipping pose {pose_id} for sub_pose.")
+            continue
+        elif selected_flag == 'f':
+            print("Finished flagging poses.")
+            break
+        
+    return positive_binders_list, negative_binders_list
+
+def construct_poses_flag_lists_from_pdb_reprocess_set(reference_pdb_file, pdb_files_list):
+    positive_binders_list = []
+    negative_binders_list = []
+    possitive_assay_id_list = []
+    negative_assay_id_list = []
+    
+    for file in pdb_files_list:
+        fields = file.split('/')[-1].split('_')
+        pose_name = fields[0]+'_'+fields[1]  # Assuming the pose name is the second field
+        assay_id = fields[3]
+        pose_id = fields[6].split('.')[0]
+        
+        # Show the 3D visualization and flag the pose
+        selected_flag = show_2_molecules_3d_and_flag(reference_pdb_file, file, pose_name)
+       
+        # Operate based on the selected flag
+        if selected_flag == '+':
+            positive_binders_list.append(pose_id)
+            possitive_assay_id_list.append(assay_id)
+        elif selected_flag == '-':
+            negative_binders_list.append(pose_id)
+            negative_assay_id_list.append(assay_id)
+        elif selected_flag == 's':
+            print(f"Skipping pose {pose_id} for sub_pose.")
+            continue
+        elif selected_flag == 'f':
+            print("Finished flagging poses.")
+            break
+        
+    return positive_binders_list, negative_binders_list, possitive_assay_id_list, negative_assay_id_list
+       
 def show_2_molecules_3d_and_flag(reference_pdb, molecule_pdb, pose_name):
     
     ref_pdb_str = load_pdb_file(reference_pdb)
@@ -331,8 +426,6 @@ def show_2_molecules_3d_and_flag(reference_pdb, molecule_pdb, pose_name):
         html = view._make_html()
         f.write(html)
         temp_html_path = f.name
-        
-        
         
     webbrowser.open('file://' + os.path.abspath(temp_html_path))
     print(f"Flaging the pose for {pose_name} file {f.name}")
@@ -374,3 +467,14 @@ def register_fingerprints_addition(db, assays_id_list,poses_id,flag):
     cursor.execute("INSERT INTO fingerprints_additions (assays_id_list, poses_id_lists, flag) VALUES (?,?,?)", (assays_id_list_str,poses_id_list_str,flag,))
     conn.commit()
     conn.close()
+    
+    
+def check_pdb_file(file,flag):
+    with open(file, 'r') as f:
+        first_line = f.readline()
+        if flag in first_line:
+            return 1
+        else:
+            return 0
+        
+    
