@@ -20,40 +20,39 @@ def process_poses_list(assay_id,docking_results_db,training_set_db,pose_id_list,
     cursor = conn.cursor()
      
     for pose in pose_id_list:
-        # Retrieve the pose information from the docking results database
-        ligname, sub_pose, fingerprint_csv_file = retrieve_pose(cursor,pose)
+        # Retrieve and store the pose information from the docking results database
+        retrieve_and_store_pose(cursor, pose, training_set_db, assay_id, table, flag,  comment)
         
-        store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_file,table,flag,pose,comment)
-        
-def retrieve_pose(cursor,pose):
+def retrieve_and_store_pose(cursor, pose, training_set_db, assay_id, table, flag,  comment):
     # Retrieve the prolif blob object stored in the results table
-    cursor.execute("SELECT LigName, sub_pose, prolif_csv_file FROM prolif_fingerprints WHERE Pose_ID = ?", (pose,))
+    cursor.execute("SELECT LigName, sub_pose, prolif_csv_file, prolif_parameters_set FROM prolif_fingerprints WHERE Pose_ID = ?", (pose,))
     result = cursor.fetchall()
     
     if len(result) == 0:
         print(f"No data found for pose ID: {pose}")
-        return None, None, None
+        return None, None, None, None
     
-    for ligname, sub_pose, blob in result:
+    for ligname, sub_pose, blob, prolif_params_set in result:
         # Convert BLOB to file-like object
         file_like = io.BytesIO(blob)
-        csv_filename = f"/tmp/{sub_pose}.csv"
+        fingerprint_csv_file = f"/tmp/{sub_pose}.csv"
         
         # Open the tar file
-    with tarfile.open(fileobj=file_like, mode='r:*') as tar:
-        for member in tar.getmembers():
-            # Read the file content
-            extracted = tar.extractfile(member)
-            if extracted:
-                # Save with the name from the database
-                with open(f"{csv_filename}", "wb") as out_file:
-                    out_file.write(extracted.read())
+        with tarfile.open(fileobj=file_like, mode='r:*') as tar:
+            for member in tar.getmembers():
+                # Read the file content
+                extracted = tar.extractfile(member)
+                if extracted:
+                    # Save with the name from the database
+                    with open(f"{fingerprint_csv_file}", "wb") as out_file:
+                        out_file.write(extracted.read())
     
-    return ligname, sub_pose, csv_filename
+        store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_file,table,flag,pose,comment, prolif_params_set)
     
-def store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_file,table,flag,pose,comment):
+    
+def store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_file,table,flag,pose,comment, prolif_params_set):
     # Check if the fingerprint is duplicated in the table
-    exists = check_duplicated_fingerprint(training_set_db,assay_id,ligname,sub_pose,table,pose,comment)
+    exists = check_duplicated_fingerprint(training_set_db, assay_id, ligname, sub_pose, table,pose, comment, prolif_params_set)
     
     if exists == 1:
         print(f"The fingerprint record: '{pose}' corresponding to '{sub_pose}' from assay: '{assay_id}' has already been stored. Skipping storage...")
@@ -70,20 +69,20 @@ def store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_
         cursor = conn.cursor()
        
         # Insert the fingerprint into the table    
-        cursor.execute(f"INSERT INTO {table} (assay_id, pose_nbr, ligname, sub_pose, fingerprint, comment) VALUES (?,?,?,?,?,?)", (assay_id,pose,ligname,sub_pose,df_blob,comment,))
+        cursor.execute(f"INSERT INTO {table} (assay_id, pose_nbr, ligname, sub_pose, fingerprint, comment, prolif_parameters_set) VALUES (?,?,?,?,?,?,?)", (assay_id, pose, ligname, sub_pose, df_blob, comment, prolif_params_set,))
         conn.commit()
         conn.close()
     
-def check_duplicated_fingerprint(training_set_db,assay_id,ligname,sub_pose,table,pose,comment):
+def check_duplicated_fingerprint(training_set_db, assay_id, ligname, sub_pose, table, pose, comment, prolif_params_set):
     conn = tidyscreen.connect_to_db(training_set_db)
     cursor = conn.cursor()
     
     # Create the corresponding table if it does not exist
     #cursor.execute(f"CREATE TABLE IF NOT EXISTS {table} (assay_id INTEGER, pose_nbr INTEGER, ligname TEXT, sub_pose TEXT, fingerprint BLOB)")
-    cursor.execute(f'CREATE TABLE IF NOT EXISTS {table} (fp_id INTEGER PRIMARY KEY AUTOINCREMENT, assay_id INTEGER, pose_nbr INTEGER, ligname TEXT, sub_pose TEXT, fingerprint BLOB, added_on DATETIME DEFAULT (CURRENT_TIMESTAMP), comment TEXT)')
+    cursor.execute(f'CREATE TABLE IF NOT EXISTS {table} (fp_id INTEGER PRIMARY KEY AUTOINCREMENT, assay_id INTEGER, pose_nbr INTEGER, ligname TEXT, sub_pose TEXT, fingerprint BLOB, prolif_parameters_set INTEGER, added_on DATETIME DEFAULT (CURRENT_TIMESTAMP), comment TEXT)')
     
     # Query if the a record matching already exists:
-    cursor.execute(f"SELECT * FROM {table} WHERE assay_id = ? AND ligname = ? AND sub_pose = ? AND comment = ?", (assay_id,ligname,sub_pose,comment,))
+    cursor.execute(f"SELECT * FROM {table} WHERE assay_id = ? AND ligname = ? AND sub_pose = ? AND comment = ? AND prolif_parameters_set = ?", (assay_id,ligname,sub_pose,comment,prolif_params_set,))
     
     # Fetch the result
     result = cursor.fetchone()
@@ -94,9 +93,10 @@ def check_duplicated_fingerprint(training_set_db,assay_id,ligname,sub_pose,table
     else:
         return 0
         
-def combine_fingerprints(training_set_db, filter_by, assay_id, date_start, date_end, comment, fp_start, fp_end):
+def combine_fingerprints(training_set_db, filter_by, assay_id, date_start, date_end, comment, fp_start, fp_end, prolif_params_set):
     conn = sqlite3.connect(training_set_db)
     cursor = conn.cursor()
+    
     # Container for final combined rows
     combined_rows = []
     
@@ -110,28 +110,28 @@ def combine_fingerprints(training_set_db, filter_by, assay_id, date_start, date_
         
             if filter_by == "all":
                 # The the data matching the filter
-                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table}")
+                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint, prolif_parameters_set FROM {table}")
                 rows = cursor.fetchall()
 
             elif filter_by == "assay":
                 if assay_id is None:
                     assay_id = input("Please provide the assay_id to filter by: ")
                 # The the data matching the filter
-                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table} WHERE assay_id = ?", (assay_id,))
+                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint, prolif_parameters_set FROM {table} WHERE assay_id = ?", (assay_id,))
                 rows = cursor.fetchall()
             elif filter_by == "datetime":
                 if date_start is None or date_end is None:
                     date_start = input("Please provide the start datetime (YYYY-MM-DD HH:MM:SS): ")
                     date_end = input("Please provide the end date (YYYY-MM-DD HH:MM:SS): ")
                 # The the data matching the filter
-                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table} WHERE added_on >= ? AND added_on <= ?", (date_start,date_end,))
+                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint, prolif_parameters_set FROM {table} WHERE added_on >= ? AND added_on <= ?", (date_start,date_end,))
                 rows = cursor.fetchall()
                 
             elif filter_by == "comment":
                 if comment is None:
                     comment = input("Please provide the comment to filter by: ")
                 # The the data matching the filter
-                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table} WHERE comment LIKE ?", (f"%{comment}%",))
+                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint, prolif_parameters_set FROM {table} WHERE comment LIKE ?", (f"%{comment}%",))
                 rows = cursor.fetchall()
 
             elif filter_by == "fp_range":
@@ -139,11 +139,24 @@ def combine_fingerprints(training_set_db, filter_by, assay_id, date_start, date_
                     fp_start = int(input("Please provide the start fp_id: "))
                     fp_end = int(input("Please provide the end fp_id: "))
                 # Retrieve the data matching the filter
-                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint FROM {table} WHERE fp_id >= ? AND fp_id <= ?", (fp_start,fp_end,))
+                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint, prolif_parameters_set FROM {table} WHERE fp_id >= ? AND fp_id <= ?", (fp_start,fp_end,))
                 rows = cursor.fetchall()
 
+            elif filter_by == "prolif_parameters_set":
+                if prolif_params_set is None:
+                    prolif_params_set = input("Please provide the prolif parameters set nbr: ")
+                
+                # The the data matching the filter
+                cursor.execute(f"SELECT assay_id, pose_nbr, ligname, sub_pose, fingerprint, prolif_parameters_set FROM {table} WHERE prolif_parameters_set = ?", (prolif_params_set,))
+                
+                rows = cursor.fetchall()
+                
             else:
-                print(f"Filter type '{filter_by}' is not recognized. Please use 'all', 'assay', 'datetime', 'comment' or 'fp_range'.")
+                print(f"Filter type '{filter_by}' is not recognized. Please use 'all', 'assay', 'datetime', 'comment', 'fp_range' or 'prolif_parameters_set'.")
+                sys.exit(1)
+
+            if len(rows) == 0:
+                print(f"No data found in the '{table}' table with the specified filter: {filter_by}.")
                 sys.exit(1)
 
 
@@ -153,12 +166,13 @@ def combine_fingerprints(training_set_db, filter_by, assay_id, date_start, date_
             assay_pose_list = []
 
             for row in rows:
-                assay_id, pose_nbr, ligname, sub_pose, fingerprint = row
+                assay_id, pose_nbr, ligname, sub_pose, fingerprint, prolif_parameters_set = row
             
                 # Unpickle the blob to get the embedded DataFrame
                 df_fingerprint = pickle.load(io.BytesIO(fingerprint))
                 
                 # Add extra information to the fingerprint dataframe
+                df_fingerprint.insert(0, 'prolif_parameters_set', prolif_parameters_set)
                 df_fingerprint.insert(0, 'sub_pose', sub_pose)
                 df_fingerprint.insert(0, 'ligname', ligname)
                 df_fingerprint.insert(0, 'assay_id', assay_id)
@@ -169,23 +183,24 @@ def combine_fingerprints(training_set_db, filter_by, assay_id, date_start, date_
                 assay_pose_list.append((assay_id,pose_nbr))
 
             assay_pose_dict[table] = assay_pose_list
-            
+
             # Concatenate all the rows into one DataFrame
             training_set_df = pd.concat(combined_rows, ignore_index=True)
 
-        except:
+        except Exception as e:
+            print(e)
             print(f"No table named '{table}' found in the database. Skipping...")
             continue
     
     return training_set_df, assay_pose_dict
 
-def store_training_set(training_set_db, training_set_df,assay_pose_dict):
+def store_training_set(training_set_db, training_set_df,assay_pose_dict,filter_by):
     
     # Create the table storing datasets if not available
     conn = tidyscreen.connect_to_db(training_set_db) 
     cursor = conn.cursor()
     # Create the projects table only if it does not exists
-    cursor.execute('CREATE TABLE IF NOT EXISTS training_datasets (set_id INTEGER PRIMARY KEY AUTOINCREMENT, n_positives INTEGER, n_negative INTEGER, members_id BLOB, df_blob BLOB, date DATETIME DEFAULT (CURRENT_TIMESTAMP))')
+    cursor.execute('CREATE TABLE IF NOT EXISTS training_datasets (set_id INTEGER PRIMARY KEY AUTOINCREMENT, n_positives INTEGER, n_negative INTEGER, members_id BLOB, df_blob BLOB, filter_criteria TEXT, date DATETIME DEFAULT (CURRENT_TIMESTAMP))')
     conn.commit()
     
     # get the time of set preparation
@@ -205,7 +220,8 @@ def store_training_set(training_set_db, training_set_df,assay_pose_dict):
     df_blob = pickle.dumps(training_set_df)
     
     # Create a new entry in the table for the training set
-    cursor.execute('INSERT INTO training_datasets (n_positives, n_negative, members_id, df_blob) VALUES (?, ?, ?, ?)', (n_positives, n_negative, serialized_dict, df_blob))
+    cursor.execute('INSERT INTO training_datasets (n_positives, n_negative, members_id, df_blob, filter_criteria) VALUES (?, ?, ?, ?, ?)', (n_positives, n_negative, serialized_dict, df_blob, filter_by, ))
+    
     
     cursor.execute('CREATE TABLE IF NOT EXISTS training_datasets (set_id INTEGER PRIMARY KEY AUTOINCREMENT, n_positives INTEGER, n_negative INTEGER, members_id BLOB, df_blob BLOB, date DATETIME DEFAULT (CURRENT_TIMESTAMP))')
     
@@ -295,6 +311,7 @@ def check_fingerprints_results_in_db(db):
         rows_count = len(cursor.fetchall())
         
         return rows_count
+    
     except Exception as e:
         print(f"Error checking fingerprints in database: {e}. Stopping ...")
         sys.exit(1)
@@ -467,7 +484,6 @@ def register_fingerprints_addition(db, assays_id_list,poses_id,flag):
     cursor.execute("INSERT INTO fingerprints_additions (assays_id_list, poses_id_lists, flag) VALUES (?,?,?)", (assays_id_list_str,poses_id_list_str,flag,))
     conn.commit()
     conn.close()
-    
     
 def check_pdb_file(file,flag):
     with open(file, 'r') as f:

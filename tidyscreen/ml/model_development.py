@@ -47,12 +47,12 @@ class ModelDevelopment:
             ### Store the fingerprint registration
             mdevel_utils.register_fingerprints_addition(training_set_db, assay_id_list,pose_id_list_of_lists,"negatives")
     
-    def construct_training_set(self,filter_by="all",assay_id=None, date_start=None, date_end=None, comment=None,fp_start=None,fp_end=None):
+    def construct_training_set(self, filter_by="all", assay_id=None, date_start=None, date_end=None, comment=None,fp_start=None,fp_end=None,prolif_params_set=None):
         # Define the fingerprints db
         training_set_db = self.training_set_db
-        training_set_df, assay_pose_dict = mdevel_utils.combine_fingerprints(training_set_db, filter_by, assay_id, date_start, date_end, comment,fp_start,fp_end)
-        mdevel_utils.store_training_set(training_set_db, training_set_df,assay_pose_dict)
-    
+        training_set_df, assay_pose_dict = mdevel_utils.combine_fingerprints(training_set_db, filter_by, assay_id, date_start, date_end, comment, fp_start, fp_end, prolif_params_set)
+        
+        mdevel_utils.store_training_set(training_set_db, training_set_df,assay_pose_dict, filter_by)
     
     def retrieve_training_set(self,set_id,get_poses=1):
         # Define the fingerprints db
@@ -85,20 +85,18 @@ class ModelDevelopment:
         # Check if the docked poses are stored within the folder - > return the number of docked poses
         number_of_docked_poses = mdevel_utils.check_docked_poses(assay_folder)
         
-        # Check if fingerprints registers match the number of docked poses 
-        
-        if fingerprints_in_db != number_of_docked_poses:
+        # Check if fingerprints registers match the number of docked poses by a multiplicity 
+        if fingerprints_in_db % number_of_docked_poses != 0:
             print(f"Error: The number of fingerprints ({fingerprints_in_db}) does not match the number of docked poses ({number_of_docked_poses}).")
             sys.exit(1)
             return
         
         # Create dataframe containing the subposes and their corresponding Pose_IDs - > return the dataframe
-        
         df = mdevel_utils.retrieve_fingerprints_results(assay_db)
+        df_unique_poses = df.drop_duplicates(subset=["sub_pose"])
         
         # Process the dataframe to generate a 3D visualization of the docked pose and create flag lists - > returns the positive and negative lists
-        
-        positive_binders_list, negative_binders_list = mdevel_utils.construct_poses_flag_lists(df, reference_pdb_file, assay_folder)
+        positive_binders_list, negative_binders_list = mdevel_utils.construct_poses_flag_lists(df_unique_poses, reference_pdb_file, assay_folder)
         
         # Store the positive and negative lists in the database
         if len(positive_binders_list) > 0:
@@ -107,7 +105,6 @@ class ModelDevelopment:
             ModelDevelopment.flag_poses_as_negative(self, [assay_id], [negative_binders_list], comment)
         
         print("Flagging completed successfully.")
-        
         
     def reprocess_fingerprints_set(self, reference_pdb_file, set_id, vmd_path=None, comment=None):
         

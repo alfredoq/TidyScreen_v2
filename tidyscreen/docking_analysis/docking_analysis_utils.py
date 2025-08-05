@@ -458,7 +458,7 @@ def retrieve_docked_poses_id(results_db):
     
     return docked_poses_list
 
-def compute_prolif_fps_for_docked_pose(prmtop_file,crd_file,interactions_list,tleap_vs_cristal_reference_dict):
+def compute_prolif_fps_for_docked_pose(prmtop_file,crd_file,interactions_list,tleap_vs_cristal_reference_dict, parameters_dict):
         # Load the input crd file as a MDAnalysis universe object
         u = mda.Universe(prmtop_file,crd_file,format='RESTRT')
         # Select the protein and create the corresponding ProLIF object
@@ -468,7 +468,7 @@ def compute_prolif_fps_for_docked_pose(prmtop_file,crd_file,interactions_list,tl
         lig = u.select_atoms("resname UNL")
         ligand_mol = plf.Molecule.from_mda(lig)
         # Define all available interaction for computation
-        fp = plf.Fingerprint(interactions_list)
+        fp = plf.Fingerprint(interactions_list, parameters=parameters_dict)
         # Compute the fingerprints
         fp = plf.Fingerprint()
         print("Computing ProLIF Fingerprints")
@@ -567,7 +567,7 @@ def store_mmbgsa_fingerprints_results_in_db(assay_folder,assay_id,results_pose_i
     except Exception as error:
         print(f"MMGBSA fingerprints for pose: '{results_pose_id}' already exists. Passing...")
 
-def store_prolif_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,prolif_output_csv):
+def store_prolif_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,prolif_output_csv,prolif_parameters_set):
     results_db = f"{assay_folder}/assay_{assay_id}.db"
     conn = tidyscreen.connect_to_db(results_db)
     cursor = conn.cursor()
@@ -579,7 +579,8 @@ def store_prolif_fingerprints_results_in_db(assay_folder,assay_id,results_pose_i
         LigName TEXT,
         sub_pose TEXT,
         complex_pdb_file BLOB,
-        prolif_csv_file BLOB
+        prolif_csv_file BLOB,
+        prolif_parameters_set INTEGER
     )
     ''')
     
@@ -587,16 +588,18 @@ def store_prolif_fingerprints_results_in_db(assay_folder,assay_id,results_pose_i
     complex_tar = general_functions.generate_tar_file(complex_pdb_file)
     prolif_csv_tar = general_functions.generate_tar_file(prolif_output_csv)
     
-    try: 
-        # Insert a single row
-        fingerprint_data = (results_pose_id,ligname,sub_pose,complex_tar,prolif_csv_tar)
-        cursor.execute('INSERT INTO prolif_fingerprints (Pose_ID, LigName, sub_pose, complex_pdb_file, prolif_csv_file) VALUES (?,?,?,?,?)', fingerprint_data)
-        # Commit changes and close connection
-        conn.commit()
-        conn.close()
+    #try: 
+    # Insert a single row
+    fingerprint_data = (results_pose_id,ligname,sub_pose,complex_tar,prolif_csv_tar, prolif_parameters_set,)
+    cursor.execute('INSERT INTO prolif_fingerprints (Pose_ID, LigName, sub_pose, complex_pdb_file, prolif_csv_file, prolif_parameters_set) VALUES (?,?,?,?,?,?)', fingerprint_data)
+        
+    # Commit changes and close connection
+    conn.commit()
+    conn.close()
     
-    except Exception as error:
-        print(f"Prolif fingerprints for pose: '{results_pose_id}' already exists. Passing...")
+    # except Exception as error:
+    #     print(error)
+    #     print(f"Prolif fingerprints for pose: '{results_pose_id}' already exists. Passing...")
 
 def store_docked_pose_in_db(output_path,assay_id,results_pose_id,ligname,sub_pose,pose_pdb_file):
     results_db = f"{output_path}/assay_{assay_id}.db"
@@ -695,7 +698,51 @@ def compute_tleap_vs_cristal_reference_dict(receptor_filename, main_fingerprints
     
     
     return tleap_vs_cristal_resnames_dict
-    
 
+def save_prolif_parameters_set(prolif_parameters_db,parameter, values_dict,comment):
+    conn = tidyscreen.connect_to_db(prolif_parameters_db)
+    cursor = conn.cursor() 
     
+    # Create table if it doesn't exist
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS fingerprints_params (
+        Param_ID INTEGER PRIMARY KEY,
+        params_dict TEXT,
+        comment TEXT,
+        added_on DATETIME DEFAULT (CURRENT_TIMESTAMP)
+    )
+    ''')
+
+    # If no parameter has been store, prepare the custom parameter registry
+    cursor.execute("SELECT 1 FROM fingerprints_params LIMIT 1")
+    if cursor.fetchone() is None:
+        default_params_dict_json = json.dumps({})
+        defult_comment = "Default ProLIF parameters"
+        # Store the default parameters in the database
+        cursor.execute('INSERT INTO fingerprints_params (params_dict, comment) VALUES (?,?)', (default_params_dict_json,defult_comment,))
+        conn.commit()
+    
+    # Store the provided parameters in a dictionary
+    # Serialize dictionary to JSON string
+    params_dict_json = json.dumps(values_dict)
+    
+    # Insert into database
+    cursor.execute('INSERT INTO fingerprints_params (params_dict, comment) VALUES (?,?)', (params_dict_json,comment,))
+    conn.commit()
+
+
+def retrieve_prolif_parameters_set(prolif_parameters_db,prolif_parameters_set):
+    conn = tidyscreen.connect_to_db(prolif_parameters_db)
+    cursor = conn.cursor() 
+    
+    cursor.execute(f"SELECT params_dict FROM fingerprints_params WHERE Param_ID = ?", (prolif_parameters_set,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row and row[0]:
+        return json.loads(row[0])
+    else:
+        print(f"No parameters found for ID {prolif_parameters_set}. Stopping...")
+        sys.exit(1)
+        
     
