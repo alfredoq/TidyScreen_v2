@@ -470,7 +470,6 @@ def compute_prolif_fps_for_docked_pose(prmtop_file,crd_file,interactions_list,tl
         # Define all available interaction for computation
         fp = plf.Fingerprint(interactions_list, parameters=parameters_dict)
         # Compute the fingerprints
-        fp = plf.Fingerprint()
         print("Computing ProLIF Fingerprints")
         fp.run_from_iterable([ligand_mol], protein_mol,progress=False)
         # Generate the fingerprints dataframe
@@ -727,11 +726,10 @@ def save_prolif_parameters_set(prolif_parameters_db,parameter, values_dict,comme
     params_dict_json = json.dumps(values_dict)
     
     print(params_dict_json)
-    print(type(params_dict_json))
     
     # # Insert into database
-    # cursor.execute('INSERT INTO fingerprints_params (params_dict, comment) VALUES (?,?)', (params_dict_json,comment,))
-    # conn.commit()
+    cursor.execute('INSERT INTO fingerprints_params (params_dict, comment) VALUES (?,?)', (params_dict_json,comment,))
+    conn.commit()
 
 
 def retrieve_prolif_parameters_set(prolif_parameters_db,prolif_parameters_set):
@@ -743,9 +741,22 @@ def retrieve_prolif_parameters_set(prolif_parameters_db,prolif_parameters_set):
     conn.close()
     
     if row and row[0]:
-        return json.loads(row[0])
+        parameters_dict = json.loads(row[0])
     else:
         print(f"No parameters found for ID {prolif_parameters_set}. Stopping...")
         sys.exit(1)
         
+    # This will check if the parameters_dict contains a list and transform it into a tuple since ProLIF requires a tuple. Remember that sqlite does not support tuples as a data type and stores it as a list
     
+    revised_parameters_dict = check_parameters_dict_for_tuple(parameters_dict)
+    
+    return revised_parameters_dict
+    
+def check_parameters_dict_for_tuple(dict):
+    
+    for key1, value1 in dict.items():
+                for key2, value2 in value1.items():
+                    if isinstance(value2, list):
+                        dict[key1][key2] = tuple(value2)
+                        
+    return dict

@@ -110,6 +110,7 @@ class DockingAnalysis:
             
             parameters_dict = docking_analysis_utils.retrieve_prolif_parameters_set(prolif_parameters_db,prolif_parameters_set)
             
+            
             # Compute the fingerprint for the docked pose
             figerprints_df = docking_analysis_utils.compute_prolif_fps_for_docked_pose(prmtop_file,crd_file,interactions_list,tleap_vs_cristal_reference_dict, parameters_dict)
                 
@@ -188,14 +189,16 @@ class DockingAnalysis:
                 value = input("Input the value for the parameter: ")
                 # Evaluate the value to handle different types (int, float, str)
                 processed_value = ast.literal_eval(value)
-                values_dict[interaction] = {parameter: processed_value}
+                if interaction in values_dict:
+                    values_dict[interaction][parameter] = processed_value
+                else:
+                    values_dict[interaction] = {parameter: processed_value}
+            
             elif interaction.lower() == 'f':
                 if len(values_dict) == 0:
                     print("No parameters set. Storing an empty set.")
                     parameter = ''
                 break
-        
-        print(type(processed_value))
         
         docking_analysis_utils.save_prolif_parameters_set(prolif_parameters_db, parameter, values_dict,comment)
         
