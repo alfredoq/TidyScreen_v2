@@ -85,6 +85,7 @@ class ModelDevelopment:
         # Check if the docked poses are stored within the folder - > return the number of docked poses
         number_of_docked_poses = mdevel_utils.check_docked_poses(assay_folder)
         
+        
         # Check if fingerprints registers match the number of docked poses by a multiplicity 
         if fingerprints_in_db % number_of_docked_poses != 0:
             print(f"Error: The number of fingerprints ({fingerprints_in_db}) does not match the number of docked poses ({number_of_docked_poses}).")

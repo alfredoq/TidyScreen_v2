@@ -93,7 +93,7 @@ class DockingAnalysis:
         if prolif == 1:
             
         ### Compute ProLIFfingerprints for minimized pose ###
-            interactions_list = ['Anionic','CationPi','Cationic','EdgeToFace','FaceToFace','HBAcceptor','HBDonor','Hydrophobic','MetalAcceptor','MetalDonor','PiCation','PiStacking','VdWContact','XBAcceptor','XBDonor']
+            interactions_list = ['Anionic','CationPi','Cationic','EdgeToFace','FaceToFace','HBAcceptor','HBDonor','Hydrophobic','MetalAcceptor','MetalDonor','PiCation','PiStacking','VdWContact','XBAcceptor','XBDonor'] 
             # First create empty df of interactions mapping to the whole receptor matching crystallographic residue numbering
             all_residues_plf_df = general_functions.create_prolif_reference_df(tleap_vs_cristal_reference_dict,interactions_list)
             
@@ -194,6 +194,8 @@ class DockingAnalysis:
                     print("No parameters set. Storing an empty set.")
                     parameter = ''
                 break
+        
+        print(type(processed_value))
         
         docking_analysis_utils.save_prolif_parameters_set(prolif_parameters_db, parameter, values_dict,comment)
         

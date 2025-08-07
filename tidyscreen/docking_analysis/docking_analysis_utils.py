@@ -726,9 +726,12 @@ def save_prolif_parameters_set(prolif_parameters_db,parameter, values_dict,comme
     # Serialize dictionary to JSON string
     params_dict_json = json.dumps(values_dict)
     
-    # Insert into database
-    cursor.execute('INSERT INTO fingerprints_params (params_dict, comment) VALUES (?,?)', (params_dict_json,comment,))
-    conn.commit()
+    print(params_dict_json)
+    print(type(params_dict_json))
+    
+    # # Insert into database
+    # cursor.execute('INSERT INTO fingerprints_params (params_dict, comment) VALUES (?,?)', (params_dict_json,comment,))
+    # conn.commit()
 
 
 def retrieve_prolif_parameters_set(prolif_parameters_db,prolif_parameters_set):
