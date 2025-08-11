@@ -50,9 +50,10 @@ def retrieve_and_store_pose(cursor, pose, training_set_db, assay_id, table, flag
         store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_file,table,flag,pose,comment, prolif_params_set)
     
     
-def store_fingerprint(training_set_db,assay_id,ligname,sub_pose,fingerprint_csv_file,table,flag,pose,comment, prolif_params_set):
+def store_fingerprint(training_set_db, assay_id, ligname, sub_pose, fingerprint_csv_file, table, flag, pose, comment, prolif_params_set):
+    
     # Check if the fingerprint is duplicated in the table
-    exists = check_duplicated_fingerprint(training_set_db, assay_id, ligname, sub_pose, table,pose, comment, prolif_params_set)
+    exists = check_duplicated_fingerprint(training_set_db, assay_id, ligname, sub_pose, table, pose, comment, prolif_params_set)
     
     if exists == 1:
         print(f"The fingerprint record: '{pose}' corresponding to '{sub_pose}' from assay: '{assay_id}' has already been stored. Skipping storage...")
