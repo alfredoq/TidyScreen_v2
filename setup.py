@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(name='tidyscreen',
-      version='0.2.6',
+      version='0.2.7',
       description='A library to manage data associated to drug screening campaigns',
       long_description=open('README.md').read().strip(),
       author="MedChemLab staff",
@@ -10,7 +10,7 @@ setup(name='tidyscreen',
       license='GPLv3',
       python_requires='>=3.10',
       #package_data = {'': ['tidyscreen']},
-      package_data = {'': ['tidyscreen'],'': ['tidyscreen/projects_db/*.db']},
+      package_data = {'tidyscreen': ['tidyscreen'],'tidyscreen': ['tidyscreen/projects_db/*.db']},
       include_package_data=True,
       install_requires=[
         'pandas==2.2.1',
