@@ -9,6 +9,14 @@ import sys
 import pandas as pd
 from tidyscreen import tidyscreen
 import json
+import MDAnalysis as mda
+import prolif as plf
+from pathlib import Path
+from tidyscreen.docking_analysis import docking_analysis_utils as docking_analysis_utils
+from tidyscreen.GeneralFunctions import general_functions as general_functions
+from tidyscreen.ml import model_development_utils as mdevel_utils
+
+
 
 
 def prepare_md_initial_files(output_path,complex_pdb_file,mol2_lig_parm,frcmod_lig_parm,solvent,min_steps,dynamics=1):
@@ -476,9 +484,6 @@ def renumber_mmgbsa_output2(output_path,decomp_file,tleap_vs_cristal_resnames_di
     print("#"*10)
     print("#"*10)
     print(decomp_file_dict)
-    
-
-    
 
 def parse_mmgbsa_output(filename):
     with open(filename,'r') as input_file:
@@ -640,5 +645,128 @@ def print_mmgbsa_info(assay_folder):
                     print(f"DELTA G solv: {line_split[3]}")
                 elif "DELTA TOTAL" in line:
                     print(f"DELTA G total: {line_split[2]}")
-                
-                
+
+
+def compute_fps_on_trajectory(assay_path, parameters_dict, interactions_list, frame_step, traj_file, ligresname):
+
+    topology_file = f"{assay_path}/complex.prmtop"
+    trajectory_file = f"{assay_path}/{traj_file}"
+    
+    # Create the corresponding Universe object
+    u = mda.Universe(topology_file, trajectory_file)
+    
+    # Select the ligand and protein atoms
+    ligand = u.select_atoms(f"resname {ligresname}")
+    protein = u.select_atoms("protein")
+    
+    # Setup the prolif computation
+    fp = plf.Fingerprint(interactions_list, parameters=parameters_dict)
+    
+    # Perform the fingerprint computation on the trajectory
+    fp.run(u.trajectory[::frame_step], ligand, protein)
+    
+    # Generate the fingerprints dataframe
+    fps_df = fp.to_dataframe()
+        
+    return fps_df
+    
+
+def retrieve_docking_info_md_register(md_registries_db, md_assay_id):
+    
+    # Connect to the database
+    conn = tidyscreen.connect_to_db(md_registries_db)
+    cursor = conn.cursor()
+    
+    # Retrieve the docking assay id and pose id from the md_assay_id
+    cursor.execute("SELECT docking_assay_id, docking_pose_id FROM dynamics_registries WHERE id = ?", (md_assay_id,))
+    result = cursor.fetchone()
+    conn.close()
+    
+    
+    if result:
+        docking_assay_id, docking_pose_id = result
+        return docking_assay_id, docking_pose_id
+    else:        
+        print(f"No docking assay found for MD assay ID: {md_assay_id}")    
+        sys.exit(1)  # Exit the program if no docking assay is found 
+    
+
+    
+def create_md_fingerprints_analysis_folder(md_assay_folder, docking_assay_folder, docking_assay_id, docking_pose_id):
+    
+    ## Create the for to store all files
+    output_path = f'{md_assay_folder}/fingerprints_analyses/'
+    Path(output_path).mkdir(parents=True, exist_ok=True)
+    
+    ##Retrieve the dlg corresponding to the ligand
+    ligname, sub_pose, dlg_file, run_number = docking_analysis_utils.retrieve_dlg_file(docking_assay_folder, docking_assay_id, docking_pose_id)
+    
+    print(ligname)
+    
+    # Extract the .pdb file by parsing the 'run_number' in the 'dlg_file'
+    pose_pdb_file = docking_analysis_utils.parse_dlg_by_run_number(ligname,dlg_file,run_number,output_path)
+    
+    print(pose_pdb_file)
+    
+    # Get the receptor filename from the dlg file
+    receptor_path = f'{docking_assay_folder}/receptor'
+    
+    receptor_filename = docking_analysis_utils.get_receptor_name_from_dlg(dlg_file,receptor_path,output_path)
+    
+    print(receptor_filename)
+    
+    # Generate the complex file into de corresponding folder
+    complex_pdb_file = docking_analysis_utils.generate_complex_from_pose(ligname, pose_pdb_file, output_path, receptor_filename,docking_pose_id)
+    
+    # Retrieve table name matching docking assay
+    #table_name = docking_analysis_utils.retrieve_table_name_from_assay_id(self,assay_id)
+    
+    # # Retrieve .mol2 and .frcmod files
+    # retrieve_tleap_ligand_param_files(self,table_name,output_path,ligname,pdb=1,mol2_sybyl=1,mol2_gaff2=1,frcmod=1,pdbqt=1)
+    
+    return complex_pdb_file, output_path, receptor_filename, ligname, sub_pose, pose_pdb_file
+    
+    
+def process_and_store_fingerprints_from_md_assay_csv(db, fp_flag, md_assay_id, prolif_output_csv, ligname, sub_pose, frame_step, output_path, prolif_params_set):
+    
+    # Connect to the database
+    conn = tidyscreen.connect_to_db(db)
+    cursor = conn.cursor()
+    
+    df = pd.read_csv(prolif_output_csv)
+    
+    current_frame = 0
+    
+    if fp_flag == 'positives':
+        table = 'positives'
+        flag = 1
+    elif fp_flag == 'negatives':
+        table = 'negatives'
+        flag = 0
+    else:
+        print(f"Invalid fingerprint flag: {fp_flag}. Use 'positives' or 'negatives'.")
+        sys.exit(1)
+        
+    
+    for index, row in df.iterrows():
+        frame_fingerprint_csv_file = f"{output_path}/prolif_fingerprints_renum.csv"
+        row_df = pd.DataFrame([row])
+        row_df.to_csv(frame_fingerprint_csv_file, index=False)
+               
+        comment = "MD Fingerprint from frame " + str(current_frame)
+        
+        sub_pose_md = sub_pose + "_frame_" + str(current_frame)
+        
+        mdevel_utils.store_fingerprint(db, md_assay_id, ligname, sub_pose_md, frame_fingerprint_csv_file, table, flag, md_assay_id, comment, prolif_params_set)
+        
+        current_frame += frame_step
+    
+    
+        
+
+    
+    
+    
+    
+    
+    

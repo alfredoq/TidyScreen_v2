@@ -316,9 +316,15 @@ class ChemSpace:
             # Apply the corresponding reaction workflow
             final_products_df = cs_utils.apply_validated_reaction_workflow(self.cs_database_file,smarts_reaction_workflow_list,reactants_lists,dry_run)
             
+            # Add and ID column to the final products DataFrame
+            df_with_id = final_products_df.reset_index().rename(columns={'index': 'id'})
+            
+            
+            # Evaluate if the storing of the final products is required
             if dry_run == 0:
                 # Store the final products in the reactions results the database
-                cs_utils.store_reaction_results(self.cs_database_file, final_products_df, reaction_workflow_id, reactants_lists)
+                #cs_utils.store_reaction_results(self.cs_database_file, final_products_df, reaction_workflow_id, reactants_lists)
+                cs_utils.store_reaction_results(self.cs_database_file, df_with_id, reaction_workflow_id, reactants_lists)
         
         except Exception as error:
             print(error)

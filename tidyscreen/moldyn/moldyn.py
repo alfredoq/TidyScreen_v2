@@ -2,6 +2,7 @@ import warnings
 warnings.filterwarnings("ignore")
 from tidyscreen.moldyn import moldyn_utils as moldyn_utils
 from tidyscreen.docking_analysis import docking_analysis_utils as docking_analysis_utils
+from tidyscreen.GeneralFunctions import general_functions as general_functions
 import sys
 import os
 
@@ -12,6 +13,9 @@ class MolDyn:
         self.mdyn_path = self.project.proj_folders_path['dynamics']
         self.docking_path = self.project.proj_folders_path["docking"]
         self.docking_assays_path = self.project.proj_folders_path["docking"]["docking_assays"]
+        self.docking_params_path = self.project.proj_folders_path["docking"]["params"]
+        self.training_set_path = self.project.proj_folders_path["ml"]["training_sets"]
+        self.training_set_db = f"{self.training_set_path}/training_sets.db"
         if amberhome is None:
             self.amberhome = input("Please, input the AMBERHOME path: ")
             if self.amberhome is None:
@@ -115,4 +119,46 @@ class MolDyn:
             print("Error showing MMGBSA results. Stopping...")
             print(error)
             sys.exit()
-                
+    
+    def compute_and_store_fps_on_md(self, md_assay_id, fp_flag, prolif_params_set=1, frame_step=10,  traj_file="prod.nc", ligresname="UNL"):
+        
+        md_assay_folder = self.mdyn_path['md_assays'] + f"/assay_{md_assay_id}"
+        md_registries_db = self.mdyn_path['md_registers'] + "/md_registries.db"
+        
+        # Retrieve the docking assay id and pose id from the md_assay_id
+        docking_assay_id, docking_pose_id = moldyn_utils.retrieve_docking_info_md_register(md_registries_db, md_assay_id)
+        
+        # Create the fingerprints analysis folder
+        docking_assay_folder = f"{self.docking_assays_path}/assay_{docking_assay_id}"
+        
+        #complex_pdb_file, output_path, receptor_filename, ligname, sub_pose, pose_pdb_file  = docking_analysis_utils.create_fingerprints_analysis_folder(self,assay_folder,docking_assay_id, docking_pose_id)
+        complex_pdb_file, output_path, receptor_filename, ligname, sub_pose, pose_pdb_file = moldyn_utils.create_md_fingerprints_analysis_folder(md_assay_folder, docking_assay_folder, docking_assay_id, docking_pose_id)
+        
+        ## Create a tleap vs cristal reference dictionary
+        tleap_vs_cristal_reference_dict = docking_analysis_utils.compute_tleap_vs_cristal_reference_dict(receptor_filename, f"{md_assay_folder}/fingerprints_analyses")
+        
+        # Retrieve the fingerprint parameters set
+        prolif_parameters_db = self.docking_params_path + "/prolif_parameters.db"
+        parameters_dict = docking_analysis_utils.retrieve_prolif_parameters_set(prolif_parameters_db,prolif_params_set)
+        
+        ## Compute the FPS on the trajectory
+        interactions_list = ['Anionic','CationPi','Cationic','EdgeToFace','FaceToFace','HBAcceptor','HBDonor','Hydrophobic','MetalAcceptor','MetalDonor','PiCation','PiStacking','VdWContact','XBAcceptor','XBDonor']
+        
+        # First create empty df of interactions mapping to the whole receptor matching crystallographic residue numbering
+        all_residues_plf_df = general_functions.create_prolif_reference_df(tleap_vs_cristal_reference_dict,interactions_list)
+        
+        figerprints_df = moldyn_utils.compute_fps_on_trajectory(md_assay_folder, parameters_dict, interactions_list, frame_step, traj_file, ligresname)
+        
+        # Map the fingerprint df to the crystallographic numbering
+        df_mapped_to_cristal = docking_analysis_utils.general_functions.map_prolif_fingerprints_df_to_crystal_sequence(figerprints_df,tleap_vs_cristal_reference_dict)
+        
+        # Append the mapped row to the reference the whole protein interactions dataframe
+        merged_df = docking_analysis_utils.general_functions.merge_calculated_and_reference_fingerprints_df(df_mapped_to_cristal,all_residues_plf_df)
+        
+        # Save the interactions df to the corresponding assay folder
+        prolif_output_csv = f"{output_path}/prolif_fingerprints_renum.csv"
+        merged_df.to_csv(prolif_output_csv,index=False)
+    
+        # Store the ProLIF results in the database
+        
+        moldyn_utils.process_and_store_fingerprints_from_md_assay_csv(self.training_set_db, fp_flag, md_assay_id, prolif_output_csv, ligname, sub_pose, frame_step, output_path, prolif_params_set)

@@ -143,6 +143,7 @@ def reset_id_in_column(conn,source_table,target_table):
     conn.close()
 
 def create_prolif_reference_df(tleap_vs_cristal_reference_dict,interactions_list):
+    
     # Generate the column names by combining each dict value with each list item (the interactions to be computed)
     colnames = [f"{val}_{item}" for val in tleap_vs_cristal_reference_dict.values() for item in interactions_list]
     all_residues_plf_df = pd.DataFrame(columns=colnames)

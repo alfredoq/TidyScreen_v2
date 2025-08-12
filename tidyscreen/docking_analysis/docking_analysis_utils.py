@@ -14,6 +14,8 @@ import prolif as plf
 import csv
 from tidyscreen.GeneralFunctions import general_functions as general_functions
 import json
+import tempfile
+import subprocess
 
 
 def check_docking_assay(registries_db,assay_id):
@@ -76,7 +78,7 @@ def save_df_to_db(db,df,table_name,action="replace"):
     conn = tidyscreen.connect_to_db(db)
     df.to_sql(con=conn, name=table_name,if_exists=action,index=None)
 
-def extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses):
+def extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses,vmd_path):
     """
     This function will parse a .dlg file and will extract 1 .pdb per identified cluster into a folder named 'cluster_pdb_files' located within the docking assay folder
     """
@@ -93,6 +95,9 @@ def extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses):
     activation_keywords =  ['CLUSTERING', 'HISTOGRAM'] # This is the opening line of the Clustering Histogram
     shutdown_keywords = ['RMSD', 'TABLE']
     number_of_poses_to_extract = max_poses
+    
+    if vmd_path is None:
+        vmd_path = input("Please, input the VMD path: ")
     
     for index, row in ligands_name_df.iterrows():
         ligname = row['LigName']
@@ -139,6 +144,40 @@ def extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses):
                         pdb_output.write(f"{atom_field:<6}{new_line[2]:>5}{'':<1}{new_line[3]:>4}{'':<1}{new_line[4]:>3}{'':<2}{new_line[5]:>4}{'':<4}{new_line[6]:>8}{new_line[7]:>8}{new_line[8]:>8}\n")
         
             pdb_output.close()
+            
+            # This will process the .pdb file with VMD to make it compatible with python 3D viewers
+            
+            input_pdb_file = output_file
+            output_pdb_file = output_file.replace('.pdb','_vmd.pdb')
+            # Read and write the pose with VMD
+            process_with_vmd(input_pdb_file,output_pdb_file, vmd_path)
+            # Rename the output file to the original one
+            os.rename(output_pdb_file, input_pdb_file)
+
+def process_with_vmd(input_pdb_file,output_pdb_file,vmd_path):
+    # This will process the .pdb file with VMD to make it compatible with python 3D viewers
+    tcl_script = f"""
+mol new {input_pdb_file} type pdb
+set sel [atomselect top "all"]
+$sel writepdb {output_pdb_file}
+quit
+"""
+    # Write the TCL script to a temporary file
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.tcl') as tcl_file:
+        tcl_file.write(tcl_script)
+        tcl_path = tcl_file.name
+
+    # Run VMD in text mode
+    try:
+        subprocess.run([vmd_path, '-dispdev', 'text', '-e', tcl_path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    finally:
+        os.remove(tcl_path)
+
+def get_bash_alias(alias_name):
+    # This command sources .bashrc and prints the alias value
+    result = subprocess.run(['which', 'vmd'], shell=True, capture_output=True, text=True)
+    print("Command output:", result.stdout.strip())
+    return result.stdout.strip()
         
 def create_fingerprints_analysis_folder(self,assay_folder,assay_id,results_pose_id):
     # Create the for to store all files
@@ -419,7 +458,7 @@ def retrieve_docked_poses_id(results_db):
     
     return docked_poses_list
 
-def compute_prolif_fps_for_docked_pose(prmtop_file,crd_file,interactions_list,tleap_vs_cristal_reference_dict):
+def compute_prolif_fps_for_docked_pose(prmtop_file,crd_file,interactions_list,tleap_vs_cristal_reference_dict, parameters_dict):
         # Load the input crd file as a MDAnalysis universe object
         u = mda.Universe(prmtop_file,crd_file,format='RESTRT')
         # Select the protein and create the corresponding ProLIF object
@@ -429,9 +468,8 @@ def compute_prolif_fps_for_docked_pose(prmtop_file,crd_file,interactions_list,tl
         lig = u.select_atoms("resname UNL")
         ligand_mol = plf.Molecule.from_mda(lig)
         # Define all available interaction for computation
-        fp = plf.Fingerprint(interactions_list)
+        fp = plf.Fingerprint(interactions_list, parameters=parameters_dict)
         # Compute the fingerprints
-        fp = plf.Fingerprint()
         print("Computing ProLIF Fingerprints")
         fp.run_from_iterable([ligand_mol], protein_mol,progress=False)
         # Generate the fingerprints dataframe
@@ -528,7 +566,7 @@ def store_mmbgsa_fingerprints_results_in_db(assay_folder,assay_id,results_pose_i
     except Exception as error:
         print(f"MMGBSA fingerprints for pose: '{results_pose_id}' already exists. Passing...")
 
-def store_prolif_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,prolif_output_csv):
+def store_prolif_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,prolif_output_csv,prolif_parameters_set):
     results_db = f"{assay_folder}/assay_{assay_id}.db"
     conn = tidyscreen.connect_to_db(results_db)
     cursor = conn.cursor()
@@ -540,7 +578,8 @@ def store_prolif_fingerprints_results_in_db(assay_folder,assay_id,results_pose_i
         LigName TEXT,
         sub_pose TEXT,
         complex_pdb_file BLOB,
-        prolif_csv_file BLOB
+        prolif_csv_file BLOB,
+        prolif_parameters_set INTEGER
     )
     ''')
     
@@ -548,16 +587,18 @@ def store_prolif_fingerprints_results_in_db(assay_folder,assay_id,results_pose_i
     complex_tar = general_functions.generate_tar_file(complex_pdb_file)
     prolif_csv_tar = general_functions.generate_tar_file(prolif_output_csv)
     
-    try: 
-        # Insert a single row
-        fingerprint_data = (results_pose_id,ligname,sub_pose,complex_tar,prolif_csv_tar)
-        cursor.execute('INSERT INTO prolif_fingerprints (Pose_ID, LigName, sub_pose, complex_pdb_file, prolif_csv_file) VALUES (?,?,?,?,?)', fingerprint_data)
-        # Commit changes and close connection
-        conn.commit()
-        conn.close()
+    #try: 
+    # Insert a single row
+    fingerprint_data = (results_pose_id,ligname,sub_pose,complex_tar,prolif_csv_tar, prolif_parameters_set,)
+    cursor.execute('INSERT INTO prolif_fingerprints (Pose_ID, LigName, sub_pose, complex_pdb_file, prolif_csv_file, prolif_parameters_set) VALUES (?,?,?,?,?,?)', fingerprint_data)
+        
+    # Commit changes and close connection
+    conn.commit()
+    conn.close()
     
-    except Exception as error:
-        print(f"Prolif fingerprints for pose: '{results_pose_id}' already exists. Passing...")
+    # except Exception as error:
+    #     print(error)
+    #     print(f"Prolif fingerprints for pose: '{results_pose_id}' already exists. Passing...")
 
 def store_docked_pose_in_db(output_path,assay_id,results_pose_id,ligname,sub_pose,pose_pdb_file):
     results_db = f"{output_path}/assay_{assay_id}.db"
@@ -656,5 +697,66 @@ def compute_tleap_vs_cristal_reference_dict(receptor_filename, main_fingerprints
     
     
     return tleap_vs_cristal_resnames_dict
+
+def save_prolif_parameters_set(prolif_parameters_db,parameter, values_dict,comment):
+    conn = tidyscreen.connect_to_db(prolif_parameters_db)
+    cursor = conn.cursor() 
     
+    # Create table if it doesn't exist
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS fingerprints_params (
+        Param_ID INTEGER PRIMARY KEY,
+        params_dict TEXT,
+        comment TEXT,
+        added_on DATETIME DEFAULT (CURRENT_TIMESTAMP)
+    )
+    ''')
+
+    # If no parameter has been store, prepare the custom parameter registry
+    cursor.execute("SELECT 1 FROM fingerprints_params LIMIT 1")
+    if cursor.fetchone() is None:
+        default_params_dict_json = json.dumps({})
+        defult_comment = "Default ProLIF parameters"
+        # Store the default parameters in the database
+        cursor.execute('INSERT INTO fingerprints_params (params_dict, comment) VALUES (?,?)', (default_params_dict_json,defult_comment,))
+        conn.commit()
     
+    # Store the provided parameters in a dictionary
+    # Serialize dictionary to JSON string
+    params_dict_json = json.dumps(values_dict)
+    
+    print(params_dict_json)
+    
+    # # Insert into database
+    cursor.execute('INSERT INTO fingerprints_params (params_dict, comment) VALUES (?,?)', (params_dict_json,comment,))
+    conn.commit()
+
+
+def retrieve_prolif_parameters_set(prolif_parameters_db,prolif_parameters_set):
+    conn = tidyscreen.connect_to_db(prolif_parameters_db)
+    cursor = conn.cursor() 
+    
+    cursor.execute(f"SELECT params_dict FROM fingerprints_params WHERE Param_ID = ?", (prolif_parameters_set,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row and row[0]:
+        parameters_dict = json.loads(row[0])
+    else:
+        print(f"No parameters found for ID {prolif_parameters_set}. Stopping...")
+        sys.exit(1)
+        
+    # This will check if the parameters_dict contains a list and transform it into a tuple since ProLIF requires a tuple. Remember that sqlite does not support tuples as a data type and stores it as a list
+    
+    revised_parameters_dict = check_parameters_dict_for_tuple(parameters_dict)
+    
+    return revised_parameters_dict
+    
+def check_parameters_dict_for_tuple(dict):
+    
+    for key1, value1 in dict.items():
+                for key2, value2 in value1.items():
+                    if isinstance(value2, list):
+                        dict[key1][key2] = tuple(value2)
+                        
+    return dict
