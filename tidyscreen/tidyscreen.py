@@ -82,6 +82,31 @@ def create_project(path, proj_name):
         print(f"Project '{proj_name}' already exists. Cannot be created. Stopping...")
         sys.exit()
 
+def import_project():
+    # Request the path to the project to import
+    proj_path = input("Input the full path to the project to import: ")
+    # Get the name of the project from the path
+    proj_name = proj_path.split("/")[-1]
+    # Check if the project already exists in the database
+    rows = projects(print_output = 0)
+    # Check the existence of the project to delete
+    exists = check_project_exists(rows,proj_name)
+    
+    if exists == 1:
+        print(f"Project '{proj_name}' already exists in the database. Cannot be imported. Stopping...")
+        sys.exit()
+    
+    # Check that the path exists
+    if os.path.exists(proj_path):
+        all_paths_dict = check_project_folders_structure(proj_path)
+        description = input("Input project short description: ")
+        store_project_in_main_database(proj_name,proj_path,all_paths_dict,description)
+        print(f"Project '{proj_name}' created at: '{proj_path}'.")
+        
+    else:
+        print(f"The path '{proj_path}' does NOT exist. Stopping...")
+        sys.exit()
+
 def del_project(proj_name):
     ### Will delete a single project and all associated files
     rows = projects(print_output = 0)
@@ -148,7 +173,7 @@ def delete_project(name):
         delete_project_folder(conn,name)
         delete_db_registry(conn,name)
     else:
-        print(f"Aborting deleteion of project: '{name}'")
+        print(f"Aborting deletion of project: '{name}'")
     
 def delete_db_registry(conn,name):
     # Get the ID of the project to delete
@@ -164,6 +189,37 @@ def delete_project_folder(conn,name):
     project_path = cur.fetchall()[0][0]
     shutil.rmtree(project_path)
     print(f"Project folder '{project_path}' deleted filesystem.")
+    
+def check_project_folders_structure(path):
+    project_folders_structure = {'chemspace':["raw_data","processed_data","misc"],
+                                'docking':["docking_assays","docking_registers","params",'raw_data','receptors'],
+                                'dynamics':["md_assays","md_registers","md_params"],
+                                'ml':['training_sets',"test_sets","models"],
+                                '.project_vars':["paths"]
+                                }
+    
+    all_paths_dict = {}
+    
+    for base_folder in project_folders_structure.keys():
+        current_level_dict = {}
+        for folder in project_folders_structure[base_folder]:
+            folder_to_check = f"{path}/{base_folder}/{folder}"
+            if not os.path.exists(path):
+                print(f"Folder '{folder_to_check}' does NOT exist. Stopping...")
+                sys.exit()
+            # Create a dictionary with folder for the current level of folder
+            current_level_dict[folder]=folder_to_check
+            # Create a dictionary for the base level of folders
+            all_paths_dict[base_folder]=current_level_dict
+            
+    # Save the project paths to a pickle file indicating the new location of the project
+    project_paths_dir = f"{path}/.project_vars/paths"
+    with open(f"{project_paths_dir}/paths.pkl","wb") as paths_file:
+        pickle.dump(all_paths_dict, paths_file)
+            
+    print("Project folder structure looks OK. Continuing...")
+
+    return all_paths_dict
 
 class ActivateProject:
 
@@ -186,10 +242,3 @@ class ActivateProject:
 
 
 
-
-class Engine:
-    def __init__(self, horsepower):
-        self.horsepower = horsepower
-
-    def start(self):
-        return "Engine started!"
