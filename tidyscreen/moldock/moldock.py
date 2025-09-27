@@ -1,6 +1,9 @@
 from tidyscreen.moldock import moldock_utils as moldock_utils
 from tidyscreen import tidyscreen as tidyscreen
 import sys
+from biobb_amber.pdb4amber.pdb4amber_run import pdb4amber_run
+import io
+from contextlib import redirect_stdout
 
 class MolDock:
     
@@ -12,6 +15,15 @@ class MolDock:
         self.receptor_models_path = self.project.proj_folders_path["docking"]["receptors"]
         self.ligands_db = self.project.proj_folders_path["chemspace"]['processed_data'] + "/chemspace.db"
     
+    def process_raw_pdb(self, pdb_file):
+        
+        pdb4_amber_output = moldock_utils.process_pdb_with_pdb4amber(pdb_file) 
+
+        non_standard_resids = moldock_utils.get_non_standard_residues(pdb4_amber_output)    
+
+        print(non_standard_resids)
+
+
     def input_receptor(self,folder):
         """
         Will read a folder in which all files corresponding to a receptor model (including grids) are present. A '.tar' file containing all subfiles will be stored in the corresponding database

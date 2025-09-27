@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from pathlib import Path
 import sqlite3
+from biobb_amber.pdb4amber.pdb4amber_run import pdb4amber_run
+import io
+from contextlib import redirect_stdout
 
 def tar_folder(folder_path,file_prefix):
     # Prepare storing naming
@@ -400,4 +403,35 @@ def check_description_tag(db,id_receptor_model,tag):
         conn.close()
         sys.exit()
     
+def process_pdb_with_pdb4amber(pdb_file):
+
+    receptor_output_file = pdb_file.split('/')[-1].replace('.pdb','_processed.pdb')
     
+    receptor_output = '/'.join(pdb_file.split('/')[:-1]) + '/' + receptor_output_file
+
+
+    prop = {'remove_tmp': True,
+                }
+
+    f = io.StringIO()
+    
+    with redirect_stdout(f):
+        pdb4amber_run(input_pdb_path=pdb_file, output_pdb_path=receptor_output, properties=prop)
+
+        output = f.getvalue().splitlines()
+
+    return output    
+
+def get_non_standard_residues(strings):
+
+    for idx, val in enumerate(strings):
+            if "Non-standard-resnames" in val and idx + 1 < len(strings):
+                non_standard_resids = strings[idx + 1].split(',')
+
+    if len(non_standard_resids) == 0:
+        return None
+    else:
+        print("Non-standard residues detected:")
+        return non_standard_resids
+
+
