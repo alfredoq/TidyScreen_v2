@@ -13,6 +13,9 @@ import sqlite3
 from biobb_amber.pdb4amber.pdb4amber_run import pdb4amber_run
 import io
 from contextlib import redirect_stdout
+from rdkit import Chem
+from rdkit.Chem import AllChem
+from rdkit.Chem import rdmolfiles
 
 def tar_folder(folder_path,file_prefix):
     # Prepare storing naming
@@ -405,10 +408,12 @@ def check_description_tag(db,id_receptor_model,tag):
     
 def process_pdb_with_pdb4amber(pdb_file):
 
+    receptor_output_temp_file = pdb_file.split('/')[-1].replace('.pdb','_temp.pdb')
     receptor_output_file = pdb_file.split('/')[-1].replace('.pdb','_processed.pdb')
     
-    receptor_output = '/'.join(pdb_file.split('/')[:-1]) + '/' + receptor_output_file
-
+    receptor_output_temp_file = '/'.join(pdb_file.split('/')[:-1]) + '/' + receptor_output_temp_file
+    receptor_output_file = '/'.join(pdb_file.split('/')[:-1]) + '/' + receptor_output_file
+       
 
     prop = {'remove_tmp': True,
                 }
@@ -416,17 +421,28 @@ def process_pdb_with_pdb4amber(pdb_file):
     f = io.StringIO()
     
     with redirect_stdout(f):
-        pdb4amber_run(input_pdb_path=pdb_file, output_pdb_path=receptor_output, properties=prop)
+        pdb4amber_run(input_pdb_path=pdb_file, output_pdb_path=receptor_output_temp_file, properties=prop)
 
         output = f.getvalue().splitlines()
 
-    return output    
+    # Return only the protein file
+    with open(receptor_output_temp_file, "r") as infile, open(receptor_output_file, "w") as outfile:
+        for line in infile:
+            if "ATOM" in line:
+                outfile.write(line)
+
+    # Remove log files
+    os.remove("log.err")
+    os.remove("log.out")
+
+    return output, receptor_output_temp_file, receptor_output_file
 
 def get_non_standard_residues(strings):
 
     for idx, val in enumerate(strings):
             if "Non-standard-resnames" in val and idx + 1 < len(strings):
-                non_standard_resids = strings[idx + 1].split(',')
+                non_standard_resids_temp = strings[idx + 1].split(',')
+                non_standard_resids = [item.replace(" ", "") for item in non_standard_resids_temp]
 
     if len(non_standard_resids) == 0:
         return None
@@ -435,3 +451,67 @@ def get_non_standard_residues(strings):
         return non_standard_resids
 
 
+def reinsert_non_standard_residue(receptor_output_temp_file, receptor_output_file, residue_to_mantain):
+    
+    # Get matching lines from file1
+    with open(receptor_output_temp_file, "r") as f1:
+        matching_lines = [line for line in f1 if residue_to_mantain in line]
+
+    receptor_file = receptor_output_file.split('/')[-1]
+    ligand_filename = receptor_output_file.replace(receptor_file,'ligand.pdb')
+    
+    with open(ligand_filename, "a") as ligand_file:
+        ligand_file.writelines(matching_lines)
+
+    # Append them to file2
+    with open(receptor_output_file, "a") as f2:
+        f2.write("TER\n")
+        f2.writelines(matching_lines)
+        f2.write("TER\n")
+
+    return ligand_filename
+
+def add_hydrogens_to_ligand(ligand_filename, residue_to_mantain):
+    
+    ligand_filename_hs = ligand_filename.replace('ligand.pdb','ligand_hs.pdb')
+    ligand_filename_hs_mol2 = ligand_filename.replace('ligand.pdb','ligand_hs.mol2')
+    
+    mol = Chem.MolFromPDBFile(ligand_filename, removeHs=False)
+    mol_with_h = Chem.AddHs(mol)
+    
+    # Generate 3D coordinates (if not present or to optimize geometry)
+    AllChem.EmbedMolecule(mol_with_h, AllChem.ETKDG())
+    #AllChem.UFFOptimizeMolecule(mol_with_h)
+    
+    Chem.MolToPDBFile(mol_with_h, ligand_filename_hs)
+    rdmolfiles.MolToMolFile(mol_with_h, ligand_filename_hs_mol2)
+    
+    
+    # Replace 'UNL' label by the residue name to mantain
+    with open(ligand_filename_hs, 'r') as file:
+        filedata = file.read()
+        filedata = filedata.replace('UNL', residue_to_mantain)
+    
+    with open(ligand_filename_hs, 'w') as file:
+        file.write(filedata)    
+    
+    # Delete CONECT lines
+    with open(ligand_filename_hs, 'r') as file:
+        lines = file.readlines()
+    with open(ligand_filename_hs, 'w') as file:
+        for line in lines:
+            if not line.startswith('CONECT'):
+                file.write(line)    
+    
+    ligand_filename_hs_fixed = ligand_filename.replace('ligand.pdb','ligand_hs_fixed.pdb')
+    new_resnum = 999
+    with open(ligand_filename_hs, "r") as infile, open(ligand_filename_hs_fixed, "w") as outfile:
+        for line in infile:
+            if line.startswith(("ATOM", "HETATM")):
+                # Replace residue number (columns 23-26, 1-based indexing)
+                new_line = line[:22] + f"{new_resnum:4d}" + line[26:]
+                outfile.write(new_line)
+            else:
+                outfile.write(line)
+    
+    return ligand_filename_hs_fixed

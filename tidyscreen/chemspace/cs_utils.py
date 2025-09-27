@@ -1086,6 +1086,26 @@ def sybyl_mol2_from_pdb(inchi_key,charge,temp_dir):
         
     return output_file, output_tar_file
 
+def sybyl_mol2_from_pdb_file(pdb_file):
+    
+    output_file = pdb_file.replace(".pdb","_sybyl.mol2")
+        
+    net_charge = compute_charge_from_pdb(pdb_file)
+    
+    print(output_file)
+    antechamber_path = shutil.which('antechamber')
+    
+    antechamber_command = f'{antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c gas -nc {net_charge} -at sybyl -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
+    
+    print(antechamber_command)
+    try:
+        subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
+        print("Finished")
+    except Exception as error:
+        print(error)
+        print("ERRROR")
+    
+    
 def compute_charge_from_pdb(pdb_file):
     mol = Chem.MolFromPDBFile(pdb_file, removeHs=False) 
     
