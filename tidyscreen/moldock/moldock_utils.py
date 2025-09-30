@@ -413,7 +413,6 @@ def process_pdb_with_pdb4amber(pdb_file):
     
     receptor_output_temp_file = '/'.join(pdb_file.split('/')[:-1]) + '/' + receptor_output_temp_file
     receptor_output_file = '/'.join(pdb_file.split('/')[:-1]) + '/' + receptor_output_file
-       
 
     prop = {'remove_tmp': True,
                 }
@@ -425,17 +424,14 @@ def process_pdb_with_pdb4amber(pdb_file):
 
         output = f.getvalue().splitlines()
 
-    # Return only the protein file
-    with open(receptor_output_temp_file, "r") as infile, open(receptor_output_file, "w") as outfile:
-        for line in infile:
-            if "ATOM" in line:
-                outfile.write(line)
+    # Delete the temp file
+    os.remove(receptor_output_temp_file)
 
     # Remove log files
     os.remove("log.err")
     os.remove("log.out")
 
-    return output, receptor_output_temp_file, receptor_output_file
+    return output
 
 def get_non_standard_residues(strings):
 
@@ -449,7 +445,6 @@ def get_non_standard_residues(strings):
     else:
         print("Non-standard residues detected:")
         return non_standard_resids
-
 
 def reinsert_non_standard_residue(receptor_output_temp_file, receptor_output_file, residue_to_mantain):
     
@@ -515,3 +510,44 @@ def add_hydrogens_to_ligand(ligand_filename, residue_to_mantain):
                 outfile.write(line)
     
     return ligand_filename_hs_fixed
+
+def check_pdb_file_resnumbers(pdb_file):
+    """
+    Will check if the residue numbers in the pdb file are sequential. If not, will raise a ValueError and stop the process.
+    """
+    
+    output_tempfile = pdb_file.replace('.pdb','_temp.pdb')
+    output_file = pdb_file.replace('.pdb','_checked.pdb')
+
+
+    # Create a file corresponding to the protein
+    with open(pdb_file, "r") as infile, open(output_tempfile, "w") as outfile:
+        for line in infile:
+            if "ATOM" in line:
+                    outfile.write(line)
+
+    resnums = []
+
+    with open(output_tempfile, "r") as f1, open(output_file, "w") as f2:
+        for line in f1:
+            if line.startswith(("ATOM", "HETATM")):
+                resnum = int(line[22:26].strip())
+                if resnum not in resnums:
+                    if len(resnums) > 0:
+                        last_resnum = resnums[-1]
+                        if last_resnum + 1 != resnum:
+                            print(f"gap between: {last_resnum} and {resnum}. 'TER' card inserted")
+                            f2.write("TER\n")
+
+                    resnums.append(resnum)
+                f2.write(line)
+
+    # Append a TER card to the processed protein
+    with open(output_file, "a") as f:
+        f.write("TER\n")    
+
+    # Delete the temporary file
+    os.remove(output_tempfile)
+
+    return output_file
+
