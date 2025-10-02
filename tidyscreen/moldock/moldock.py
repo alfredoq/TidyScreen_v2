@@ -5,6 +5,7 @@ from biobb_amber.pdb4amber.pdb4amber_run import pdb4amber_run
 import io
 from contextlib import redirect_stdout
 from tidyscreen.chemspace import cs_utils as cs_utils
+import os
 
 class MolDock:
     
@@ -16,32 +17,28 @@ class MolDock:
         self.receptor_models_path = self.project.proj_folders_path["docking"]["receptors"]
         self.ligands_db = self.project.proj_folders_path["chemspace"]['processed_data'] + "/chemspace.db"
     
-    def process_raw_pdb(self, pdb_file):
+    def process_raw_pdb(self, pdb_file, clean_files=True):
+
+        if os.path.isfile(pdb_file):
+            pass
+        else:
+            print(f"File {pdb_file} does not exist.")
+            sys.exit()
 
         output_file = moldock_utils.check_pdb_file_resnumbers(pdb_file)
-
-        #pdb4_amber_output, receptor_output_temp_file, receptor_output_file = moldock_utils.process_pdb_with_pdb4amber(pdb_file)
 
         output_info = moldock_utils.process_pdb_with_pdb4amber(pdb_file) 
 
         non_standard_resids = moldock_utils.get_non_standard_residues(output_info)
         
         if len(non_standard_resids) > 0:
-            mantaing_non_standard = input(f"The following non-standard residues were found in the pdb file: {non_standard_resids}. Do you want to mantain ONE of them in the processed receptor pdb file? (y/n): ")
+            mantain_non_standard = input(f"The following non-standard residues were found in the pdb file: {non_standard_resids}. Do you want to mantain ONE of them in the processed receptor pdb file? (y/n): ")
             
-            if mantaing_non_standard.lower() == 'y':
+            if mantain_non_standard.lower() == 'y':
                 residue_to_mantain = input("Type the 3-letter code of the residue you want to mantain: ")
                 
                 if residue_to_mantain in non_standard_resids:
-                    #ligand_filename = moldock_utils.reinsert_non_standard_residue(receptor_output_temp_file, receptor_output_file, residue_to_mantain)
-
                     ligand_filename = moldock_utils.reinsert_non_standard_residue(pdb_file, output_file, residue_to_mantain)
-                    
-                    # ligand_filename_hs_fixed = moldock_utils.add_hydrogens_to_ligand(ligand_filename, residue_to_mantain)
-                    
-                    # cs_utils.sybyl_mol2_from_pdb_file(ligand_filename_hs_fixed)
-                    
-                    # print("COMPUTE")
                     
                     print(f"The non-standard residue {residue_to_mantain} has been reinserted in the processed pdb file.")
                 else:
@@ -50,13 +47,21 @@ class MolDock:
 
             else:
                 print("Only the protein will be kept in the processed pdb file.")    
-
-                # Append a 'TER' card to the processed protein 
-                with open(output_file, "a") as f:
-                    f.write("TER\n")
+                
+                mol2_file = moldock_utils.prepare_receptor_mol2_only_protein(output_file, clean_files)
+                
+                moldock_utils.prepare_pdqbt_file(mol2_file)
 
         else:
             print("Only the protein will be kept in the processed pdb file.")
+            
+            mol2_file = moldock_utils.prepare_receptor_mol2_only_protein(output_file, clean_files)
+            
+            moldock_utils.prepare_pdqbt_file(mol2_file)
+            
+            
+
+
 
 
     def input_receptor(self,folder):

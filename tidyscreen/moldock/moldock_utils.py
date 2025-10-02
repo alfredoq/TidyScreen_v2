@@ -16,6 +16,7 @@ from contextlib import redirect_stdout
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem import rdmolfiles
+import shutil
 
 def tar_folder(folder_path,file_prefix):
     # Prepare storing naming
@@ -551,3 +552,131 @@ def check_pdb_file_resnumbers(pdb_file):
 
     return output_file
 
+def prepare_receptor_mol2_only_protein(pdb_file, clean_files):
+    
+    file_path = pdb_file.rsplit('/', 1)[0]
+    
+    files_to_remove = []
+    
+    with open(f"{file_path}/tleap1.in", "w") as f:
+        f.write(f"source leaprc.protein.ff14SB\n")
+        f.write(f"receptor = loadpdb {pdb_file}\n")
+        f.write(f"saveamberparm receptor {file_path}/receptor.prmtop {file_path}/receptor.inpcrd\n")
+        f.write(f"quit\n")
+    
+    f.close()
+            
+    tleap_path = shutil.which('tleap')
+    
+    # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
+    tleap_command1 = f'cd {file_path} && {tleap_path} {file_path} -f {file_path}/tleap1.in'
+    
+    # Execute the command
+    subprocess.run(tleap_command1, shell=True, capture_output=True, text=True)
+    
+    # Check the corresponding output files have been created
+    target_files = [f"{file_path}/receptor.prmtop", f"{file_path}/receptor.inpcrd"]
+    
+    for file in target_files:
+        if os.path.getsize(file_path) > 0:
+            files_to_remove.append(f"{file_path}/tleap1.in")
+            files_to_remove.append(f"{file_path}/receptor.prmtop")
+            files_to_remove.append(f"{file_path}/receptor.inpcrd")
+            files_to_remove.append(f"{file_path}/leap.log")
+        else:
+            print(f"File {file} was not created. Stopping.")
+            sys.exit()
+    
+    # Check and inform if alternate residue locations are present
+    
+    with open(f'{file_path}/leap.log', 'r') as f:
+        content = f.read()
+        search_string = "Atom names in each residue should be unique."
+        if search_string in content:
+            print("ATTENTION: check alternate residue conformations. Mantaining the first one.")
+        else:
+            print("String not found in file.")
+        
+    
+            
+    ### Prepare an Amber-like .mol2 file
+    with open(f"{file_path}/cpptraj.in", "w") as f:
+        f.write(f"parm {file_path}/receptor.prmtop\n")
+        f.write(f"trajin {file_path}/receptor.inpcrd\n")
+        f.write(f"trajout {file_path}/receptor_temp.mol2\n")
+        f.write(f"go\n")
+        f.write(f"quit\n")
+    
+    f.close()
+    
+    cpptraj_path = shutil.which('cpptraj')
+    
+    cpptraj_command = f'cd {file_path} && {cpptraj_path} -i {file_path}/cpptraj.in'
+    
+    # Check the corresponding output files have been created
+    target_files = [f"{file_path}/receptor_temp.mol2"]
+    
+    for file in target_files:
+        if os.path.getsize(file_path) > 0:
+            files_to_remove.append(f"{file_path}/cpptraj.in")
+            files_to_remove.append(f"{file_path}/receptor_temp.mol2")
+        else:
+            print(f"File {file} was not created. Stopping.")
+            sys.exit()
+    
+    
+    # Execute the command
+    subprocess.run(cpptraj_command, shell=True, capture_output=True, text=True)
+    
+    ### Prepare an autodock-like .mol2 file
+    with open(f"{file_path}/tleap2.in", "w") as f:
+        f.write(f"source leaprc.protein.ff14SB\n")
+        f.write(f"REC = loadmol2 {file_path}/receptor_temp.mol2\n")
+        f.write(f"savemol2 REC {file_path}/receptor.mol2 0\n")
+        f.write(f"quit\n")
+    
+    f.close()
+    
+    tleap_command2 = f'cd {file_path} && {tleap_path} {file_path} -f {file_path}/tleap2.in'
+    
+    subprocess.run(tleap_command2, shell=True, capture_output=True, text=True)
+    
+    # Check the corresponding output files have been created
+    target_files = [f"{file_path}/receptor.mol2"]
+    
+    for file in target_files:
+        if os.path.getsize(file_path) > 0:
+            print(f"File {file} created successfully.")
+            files_to_remove.append(f"{file_path}/tleap2.in")
+        else:
+            print(f"File {file} was not created. Stopping.")
+            sys.exit()
+    
+    # Remove the files added to the 'files_to_remove' list  
+    if clean_files:
+        files_to_remove_unique = list(set(files_to_remove))
+        for file in files_to_remove_unique:
+            os.remove(file)
+        
+    return f"{file_path}/receptor.mol2"
+
+def prepare_pdqbt_file(mol2_file):
+    
+    file_path = mol2_file.rsplit('/', 1)[0]
+    output_file = mol2_file.replace('.mol2','.pdbqt')
+    
+    prepare_receptor_path = shutil.which('prepare_receptor4.py')
+    
+    # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
+    prepare_receptor_command = f'cd {file_path} && {prepare_receptor_path} -r {mol2_file} -C'
+    
+    print(prepare_receptor_command)
+    
+    # Execute the command
+    subprocess.run(prepare_receptor_command, shell=True, capture_output=True, text=True)
+    
+    if os.path.getsize(output_file) > 0:
+        print(f"File {output_file} created successfully.")
+    else:
+        print(f"File {output_file} was not created. Stopping.")
+        sys.exit()
