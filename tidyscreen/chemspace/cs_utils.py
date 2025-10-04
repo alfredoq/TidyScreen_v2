@@ -451,9 +451,32 @@ def check_columns_existence_in_table(conn,table_name,columns_list):
     columns = [row[1] for row in cursor.fetchall()]
     # Return True if all items in 'columns_list' already exist as columns in 'table_name'
     if all(item in columns for item in columns_list):
-        print(f"The columns: \n '{columns_list} \n already exists in '{table_name}'. \n To process again delete the whole table and recompute molecules. Stoppping...")
+        print(f"The columns: {columns_list} already exist in '{table_name}'.")
+        response = input("Do you want to delete these columns and continue? (y/n): ")
+        if response.lower() == 'y':
+            
+            # List of columns to keep (all columns minus those in columns_list)
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            all_columns = [row[1] for row in cursor.fetchall()]
+            columns_to_keep = [col for col in all_columns if col not in columns_list]
+            columns_to_keep_str = ", ".join(columns_to_keep)
+            
+            # 1. Create a new table without the unwanted columns
+            cursor.execute(f"CREATE TABLE {table_name}_tmp AS SELECT {columns_to_keep_str} FROM {table_name}")
 
-        sys.exit()
+            # 2. Drop the old table
+            cursor.execute(f"DROP TABLE {table_name}")
+
+            # 3. Rename the new table to the original name
+            cursor.execute(f"ALTER TABLE {table_name}_tmp RENAME TO {table_name}")
+
+            conn.commit()
+            print(f"Columns {columns_list} dropped from '{table_name}'.")
+            
+        else:
+            print("Stopping as requested by user.")
+            sys.exit()
+
 
 def append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt,temp_dir):
     
