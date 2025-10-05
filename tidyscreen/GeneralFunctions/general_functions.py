@@ -13,6 +13,7 @@ import concurrent.futures
 import moldf
 import copy
 import shutil
+import time
 
 def renumber_pdb_file_using_crystal(crystal_file,target_file,renumbered_file,resname_field=3,resnumber_field=5):
     crystal_dict = get_pdb_sequence_dict(crystal_file,resname_field=3,resnumber_field=5)
@@ -285,6 +286,7 @@ def check_smiles(df,smiles1,smiles2):
         sys.exit()
         
 def write_failed_smiles_to_db(smiles,db,file,cause):
+    
     conn = tidyscreen.connect_to_db(db)
     cursor = conn.cursor()
     
@@ -297,10 +299,21 @@ def write_failed_smiles_to_db(smiles,db,file,cause):
             cause TEXT
         )
     """)
-    # Insert the failed SMILES into the table
-    cursor.execute("INSERT INTO failed_smiles (smiles, source, cause) VALUES (?,?,?)", (smiles,file,cause))
-    conn.commit()
-    conn.close()
+    for attempt in range(50):
+        try:
+            # Insert the failed SMILES into the table
+            cursor.execute("INSERT INTO failed_smiles (smiles, source, cause) VALUES (?,?,?)", (smiles,file,cause))
+            conn.commit()
+            conn.close()
+            break  # Exit the loop if successful
+        
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                time.sleep(5)
+            else:
+                raise
+    else:
+        raise Exception("Failed to write after several retries.")
 
 def delete_nulls_table(db,table_name,column_name):
     conn = sqlite3.connect(db)
@@ -426,3 +439,16 @@ def clean_replaced_mol2_file(input_file,output_file):
             f.writelines(lines[start_idx:])
 
     return output_file
+
+def delete_rows_with_any_null(db, table_name):
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    # Get all column names
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = [row[1] for row in cursor.fetchall()]
+    # Build the WHERE clause: col1 IS NULL OR col2 IS NULL OR ...
+    where_clause = " OR ".join([f"{col} IS NULL" for col in columns])
+    # Delete rows with any NULL
+    cursor.execute(f"DELETE FROM {table_name} WHERE {where_clause}")
+    conn.commit()
+    conn.close()

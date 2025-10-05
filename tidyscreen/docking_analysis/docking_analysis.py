@@ -151,6 +151,8 @@ class DockingAnalysis:
         assay_folder = self.docking_assays_path + f'/assay_{assay_id}'
         assay_results_db = f"{assay_folder}/assay_{assay_id}.db"
         
+        print(assay_results_db)
+        
         docked_poses_list = docking_analysis_utils.retrieve_docked_poses_id(assay_results_db)
         
               
