@@ -477,7 +477,6 @@ def check_columns_existence_in_table(conn,table_name,columns_list):
             print("Stopping as requested by user.")
             sys.exit()
 
-
 def append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt,temp_dir):
     
     action = 0 
@@ -1027,6 +1026,7 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
         if charge != "bcc-ml":
             # Compute and store in the db the sybyl type mol2
             sybyl_mol2_output_file, sybyl_output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],charge,temp_dir)
+            
             # Store the Sybyl like file
             #store_file_as_blob(db,table_name,'mol2_file_sybyl',sybyl_output_tar_file,row)
             store_file_as_blob_with_retry(db,table_name,'mol2_file_sybyl',sybyl_output_tar_file,row)
@@ -1046,35 +1046,52 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
         
         elif charge == "bcc-ml":
             # Compute the bbc-ml charges using the precomputed bbc-ml model
-            charge_array = compute_bbc_ml_array(row["SMILES"],row["inchi_key"],temp_dir)
+            #charge_array = compute_bbc_ml_array(row["SMILES"],row["inchi_key"],temp_dir)
+            
+            # Compute the bbc-ml charges using the precomputed bbc-ml model - Alternative with timeout
+            charge_array = general_functions.timeout_function(compute_bbc_ml_array,(row["SMILES"],row["inchi_key"],temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'compute_bbc_ml_array' computation"])
+            
+            # Compute the charge using a fake 'gas' model to be replaced computing SYBYL atom types - Alternative with timeout
+            sybyl_mol2_output_file, sybyl_output_tar_file = general_functions.timeout_function(sybyl_mol2_from_pdb,(row["inchi_key"],"gas",temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'sybyl_mol2_from_pdb' computation"])
+            
             # Compute the charge using a fake 'gas' model to be replaced computing SYBYL atom types
-            sybyl_mol2_output_file, sybyl_output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],"gas",temp_dir)
+            #sybyl_mol2_output_file, sybyl_output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],"gas",temp_dir)
+            
+            # Compute the charge using a fake 'gas' model to be replaced computing SYBYL atom types - Alternative with timeout
+            sybyl_mol2_output_file, sybyl_output_tar_file = general_functions.timeout_function(sybyl_mol2_from_pdb,(row["inchi_key"],"gas",temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'sybyl_mol2_from_pdb' computation"])
     
             # Replace the charges on the .mol2 files using the precomputed bbc-ml charges
             sybyl_replaced_mol2_file = general_functions.replace_charge_on_mol2_file(sybyl_mol2_output_file,charge_array)
+
             sybyl_new_tar_file = generate_tar_file(sybyl_replaced_mol2_file)
+            
             # Store the Sybyl like file
             #store_file_as_blob(db,table_name,'mol2_file_sybyl',sybyl_new_tar_file,row)
             store_file_as_blob_with_retry(db,table_name,'mol2_file_sybyl',sybyl_new_tar_file,row)
         
             # Compute the charge using a fake 'gas' model to be replaced computing GAFF atom types
-            gaff_mol2_output_file, gaff_output_tar_file = gaff_mol2_from_pdb(row["inchi_key"],"gas",temp_dir)                          
+            #gaff_mol2_output_file, gaff_output_tar_file = gaff_mol2_from_pdb(row["inchi_key"],"gas",temp_dir)
+            
+            # Compute the charge using a fake 'gas' model to be replaced computing GAFF atom types - Alternative with timeout
+            gaff_mol2_output_file, gaff_output_tar_file = general_functions.timeout_function(gaff_mol2_from_pdb,(row["inchi_key"],"gas",temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'gaff_mol2_from_pdb' computation"])
+            
             # Replace the charges on the .mol2 files using the precomputed bbc-ml charges
             gaff_replaced_mol2_file = general_functions.replace_charge_on_mol2_file(gaff_mol2_output_file,charge_array)
             gaff_new_tar_file = generate_tar_file(gaff_replaced_mol2_file)
+            
             # Store the GAFF like file
             #store_file_as_blob(db,table_name,'mol2_file_gaff',gaff_new_tar_file,row)
             store_file_as_blob_with_retry(db,table_name,'mol2_file_gaff',gaff_new_tar_file,row)
             
             # Compute the frcmod file
             output_tar_frcmod = compute_frcmod_file(gaff_replaced_mol2_file,at="gaff")
+            
             # Store the frcmod file
             #store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
             store_file_as_blob_with_retry(db,table_name,'frcmod_file',output_tar_frcmod,row)
             
             # Store the charge model used
             store_string_in_column(db,table_name,"charge_model",charge,row)
-            
             
         else:
             print(f"Charge system: '{charge}' unknown. Stopping...")
@@ -1136,9 +1153,20 @@ def rename_sybyl_to_gaff_mol2(row,db,table_name,temp_dir,atom_types_dict):
     
 def compute_and_store_pdbqt(row,db,table_name,temp_dir):
     try:
-        # Prepare and store the corresponding .pdbqt file
+                      
+        
+        # Prepare and store the corresponding .pdbqt file - Alternative with timeout
         tar_pdbqt_file = pdbqt_from_mol2(f"{temp_dir}/{row['inchi_key']}_sybyl.mol2")
+        
+        # Prepare and store the corresponding .pdbqt file
+        #tar_pdbqt_file = general_functions.timeout_function(pdbqt_from_mol2,(f"{temp_dir}/{row['inchi_key']}_sybyl.mol2"),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdbqt_from_mol2' computation"])
+        
+        
         store_file_as_blob(db,table_name,'pdbqt_file',tar_pdbqt_file,row)
+    
+        # Store the resulting file
+        #store_string_in_column(db,table_name,'pdbqt_file',tar_pdbqt_file,row)
+    
     
     except Exception as error:
         fail_message = f"Failed at .pdbqt molecule computation step - Mol id: {row['id']}"

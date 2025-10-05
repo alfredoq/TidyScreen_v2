@@ -110,6 +110,10 @@ class ChemSpace:
             # Delete the temp directory
             shutil.rmtree(temp_dir, ignore_errors=True)
         
+        if delete_nulls == 1:
+            general_functions.delete_rows_with_any_null(db, table_name)
+        
+        
     def retrieve_mols_in_table(self,table_name,outpath=None,ligname=None,pdb=1,mol2_sybyl=1,mol2_gaff2=1,frcmod=1,pdbqt=1,inform=1):
         database_folder = self.project.proj_folders_path["chemspace"]["processed_data"]
         db = f"{database_folder}/chemspace.db"
