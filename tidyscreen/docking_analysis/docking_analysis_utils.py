@@ -198,7 +198,8 @@ def create_fingerprints_analysis_folder(self,assay_folder,assay_id,results_pose_
     retrieve_tleap_ligand_param_files(self,table_name,output_path,ligname,pdb=1,mol2_sybyl=1,mol2_gaff2=1,frcmod=1,pdbqt=1)
     
     return complex_pdb_file, output_path, receptor_filename, ligname, sub_pose, pose_pdb_file
-    
+
+
 def retrieve_dlg_file(assay_folder,assay_id,results_pose_id, results_table_name):
     """
     This function will return the name of the .dlg file corresponding the provided 'results_pose_id', as well as the 'run_number' corresponding the 'pose_id'

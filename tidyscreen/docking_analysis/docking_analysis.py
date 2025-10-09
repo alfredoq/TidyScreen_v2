@@ -216,5 +216,35 @@ class DockingAnalysis:
         docking_analysis_utils.save_prolif_parameters_set(prolif_parameters_db, parameter, values_dict,comment, results_table_name=results_table_name)
         
         
-    
+    def restore_fingerprints_results_to_db(self, assay_id, mmgbsa=1, prolif=1, clean_files=0, clean_folder=0, stored_docked_poses=1, clean_assay_folder=1, prolif_parameters_set=1, results_table_name="Results"):
+        
+        assay_folder = self.docking_assays_path + f'/assay_{assay_id}'
+        assay_results_db = f"{assay_folder}/assay_{assay_id}.db"
+        
+        # Set the main fingerprints folder
+        main_fingerprints_folder = f"{assay_folder}/fingerprints_analyses_{results_table_name}"
+        
+        main_fingerprints_folder = f"{assay_folder}/fingerprints_analyses"
+                
+        docked_poses_list = docking_analysis_utils.retrieve_docked_poses_id(assay_results_db, results_table_name)
+
+        try:
+        
+            for results_pose_id in docked_poses_list:            
+        
+                # Create the fingerprints analysis folder
+                complex_pdb_file, output_path, receptor_filename, ligname, sub_pose, pose_pdb_file  = docking_analysis_utils.create_fingerprints_analysis_folder(self,assay_folder,assay_id, results_pose_id, results_table_name, main_fingerprints_folder)
+
+
+                # Create the dummy variable for the existing file
+                mmpbsa_decomp_csv_output = f"{output_path}/mmgbsa_DECOMP_renum.csv"
+        
+                print(mmpbsa_decomp_csv_output)
+                       
+                docking_analysis_utils.store_mmbgsa_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,mmpbsa_decomp_csv_output, main_fingerprints_folder)
+                
+        except Exception as e:
+            print("Error during MMGBSA new storage in database")
+            print(e)
+        
     
