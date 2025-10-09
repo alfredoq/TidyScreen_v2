@@ -16,7 +16,7 @@ A core feature common to TidyScreen philosophy is the use of [SQL databases](htt
 #### Installation
 
 ```bash
-$ conda create -n tidyscreen python=3.10 chemicalite
+$ conda create -n tidyscreen python=3.10 chemicalite # The use of 'mamba' instead of 'conda' is suggested
 $ conda activate tidyscreen
 $ pip install git+https://github.com/alfredoq/TidyScreen_v2
 
@@ -57,7 +57,7 @@ $ conda install -c conda-forge ersilia
 
 <!-- - [BentoML](https://www.bentoml.com/): required to manage Ersilia models.  -->
 
-- [Redis serverd}(https://redis.io/open-source/):
+- [Redis server}(https://redis.io/open-source/):
 
 ```bash
 $ sudo apt-get update
