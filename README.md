@@ -67,8 +67,6 @@ $ sudo systemctl enable redis-server
 
 # Check that the server is running:
 $ redis-cli ping #It should reply with PONG.
-
-``` -->
----
+```
 
 In order to use TidyScreen, users can access the [documentation](https://alfredoq.github.io/TidyScreen_v2_docs_new/) describing the project and specific working examples.
