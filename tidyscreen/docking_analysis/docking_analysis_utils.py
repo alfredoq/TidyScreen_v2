@@ -179,12 +179,12 @@ def get_bash_alias(alias_name):
     print("Command output:", result.stdout.strip())
     return result.stdout.strip()
         
-def create_fingerprints_analysis_folder(self,assay_folder,assay_id,results_pose_id):
+def create_fingerprints_analysis_folder(self,assay_folder,assay_id,results_pose_id, results_table_name, main_fingerprints_folder):
     # Create the for to store all files
-    output_path = f'{assay_folder}/fingerprints_analyses/pose_{results_pose_id}'
+    output_path = f'{main_fingerprints_folder}/pose_{results_pose_id}'
     Path(output_path).mkdir(parents=True, exist_ok=True)
     # Retrieve the dlg corresponding to the ligand
-    ligname, sub_pose, dlg_file, run_number = retrieve_dlg_file(assay_folder,assay_id,results_pose_id)
+    ligname, sub_pose, dlg_file, run_number = retrieve_dlg_file(assay_folder,assay_id,results_pose_id, results_table_name)
     # Extract the .pdb file by parsing the 'run_number' in the 'dlg_file'
     pose_pdb_file = parse_dlg_by_run_number(ligname,dlg_file,run_number,output_path)
     # Get the receptor filename from the dlg file
@@ -199,14 +199,14 @@ def create_fingerprints_analysis_folder(self,assay_folder,assay_id,results_pose_
     
     return complex_pdb_file, output_path, receptor_filename, ligname, sub_pose, pose_pdb_file
     
-def retrieve_dlg_file(assay_folder,assay_id,results_pose_id):
+def retrieve_dlg_file(assay_folder,assay_id,results_pose_id, results_table_name):
     """
     This function will return the name of the .dlg file corresponding the provided 'results_pose_id', as well as the 'run_number' corresponding the 'pose_id'
     """
     results_db_file = f"{assay_folder}/assay_{assay_id}.db"
     conn = tidyscreen.connect_to_db(results_db_file)
     cursor = conn.cursor()
-    cursor.execute(f"SELECT LigName, sub_pose, run_number FROM Results WHERE Pose_ID = {results_pose_id}")
+    cursor.execute(f"SELECT LigName, sub_pose, run_number FROM {results_table_name} WHERE Pose_ID = {results_pose_id}")
     
     try:
         
@@ -448,12 +448,12 @@ def prepare_prolif_input_coordinates(output_path,complex_pdb_file,solvent,min_st
     # Return the prmtop and inpcrd files
     return f'{output_path}/complex.prmtop', f'{output_path}/complex.inpcrd'
  
-def retrieve_docked_poses_id(results_db):
+def retrieve_docked_poses_id(results_db, results_table_name):
     conn = tidyscreen.connect_to_db(results_db)
     cursor = conn.cursor()
     
     # Retrieve all rows
-    cursor.execute(f"SELECT Pose_ID FROM Results")
+    cursor.execute(f"SELECT Pose_ID FROM {results_table_name}")
     docked_poses_list = [row[0] for row in cursor.fetchall()]
     
     return docked_poses_list
@@ -521,7 +521,7 @@ def store_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligna
     except Exception as error:
         print(f"Fingerprints for pose: '{results_pose_id}' already exists. Passing...")
 
-def store_mmbgsa_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,mmpbsa_decomp_csv_output):
+def store_mmbgsa_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,mmpbsa_decomp_csv_output, main_fingerprints_folder):
     """
     This function will store the MMGBSA computed fingerprints results in the database
     """
@@ -530,7 +530,7 @@ def store_mmbgsa_fingerprints_results_in_db(assay_folder,assay_id,results_pose_i
     cursor = conn.cursor()
     
     # Get the energy values from the MMPBSA general outfile
-    mmgbsa_outfile = f"{assay_folder}/fingerprints_analyses/pose_{results_pose_id}/mmgbsa.out"
+    mmgbsa_outfile = f"{main_fingerprints_folder}/pose_{results_pose_id}/mmgbsa.out"
     vdwaals, eel, egb, esurf, delta_g_gas, delta_g_solv, delta_g_total = parse_mmgbsa_general_output(mmgbsa_outfile)
     
     # Create table if it doesn't exist
@@ -730,7 +730,6 @@ def save_prolif_parameters_set(prolif_parameters_db,parameter, values_dict,comme
     # # Insert into database
     cursor.execute('INSERT INTO fingerprints_params (params_dict, comment) VALUES (?,?)', (params_dict_json,comment,))
     conn.commit()
-
 
 def retrieve_prolif_parameters_set(prolif_parameters_db,prolif_parameters_set):
     conn = tidyscreen.connect_to_db(prolif_parameters_db)

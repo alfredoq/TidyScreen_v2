@@ -9,6 +9,7 @@ import sys
 import json
 import py3Dmol
 import ast
+import os
 
 class DockingAnalysis:
     
@@ -42,7 +43,7 @@ class DockingAnalysis:
             print(f"\n Extracting '{max_poses}' PDB poses per cluster \n")
             docking_analysis_utils.extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses,vmd_path)
     
-    def compute_fingerprints_for_docked_pose(self, assay_id, results_pose_id, mmgbsa=1, prolif=1, clean_files=1, clean_folder=1, solvent="implicit", min_steps=5000, store_docked_poses=1, prolif_parameters_set=1, iteration=1,  ligresname="UNL"):
+    def compute_fingerprints_for_docked_pose(self, assay_id, results_pose_id, mmgbsa=1, prolif=1, clean_files=1, clean_folder=1, solvent="implicit", min_steps=5000, store_docked_poses=1, prolif_parameters_set=1, iteration=1,  ligresname="UNL", results_table_name="Results"):
     
     ### Start to log the time
         start_time = time.time()
@@ -52,14 +53,26 @@ class DockingAnalysis:
         assay_folder = self.docking_assays_path + f'/assay_{assay_id}'
         
         # Set the main fingerprints folder
-        main_fingerprints_folder = f"{assay_folder}/fingerprints_analyses"
+        main_fingerprints_folder = f"{assay_folder}/fingerprints_analyses_{results_table_name}"
         
+        # Check the existence of the main fingerprints folder and if present in the first iteration, querty to delete it and create a new one
+        
+        if os.path.exists(main_fingerprints_folder) and os.path.isdir(main_fingerprints_folder) and iteration == 1:
+            response = input(f"The folder '{main_fingerprints_folder}' exists. Do you want to delete it? (y/n): ")
+            if response.lower() == 'y':
+                shutil.rmtree(main_fingerprints_folder)
+                print("Folder deleted.")
+            else:
+                print("Folder not deleted. Stopping")
+                sys.exit()
+        
+                
         # Create the fingerprints analysis folder
-        complex_pdb_file, output_path, receptor_filename, ligname, sub_pose, pose_pdb_file  = docking_analysis_utils.create_fingerprints_analysis_folder(self,assay_folder,assay_id, results_pose_id)
+        complex_pdb_file, output_path, receptor_filename, ligname, sub_pose, pose_pdb_file  = docking_analysis_utils.create_fingerprints_analysis_folder(self,assay_folder,assay_id, results_pose_id, results_table_name, main_fingerprints_folder)
         
         if iteration == 1:
             # Create a tleap vs cristal reference dictionary
-            tleap_vs_cristal_reference_dict = docking_analysis_utils.compute_tleap_vs_cristal_reference_dict(receptor_filename, f"{assay_folder}/fingerprints_analyses")
+            tleap_vs_cristal_reference_dict = docking_analysis_utils.compute_tleap_vs_cristal_reference_dict(receptor_filename, main_fingerprints_folder)
             
         else:
             # Load the existing tleap vs cristal reference dictionary
@@ -83,7 +96,7 @@ class DockingAnalysis:
                 prmtop_file, crd_file, tleap_vs_cristal_reference_dict,mmpbsa_decomp_csv_output = docking_analysis_utils.compute_fingerprints(output_path,main_fingerprints_folder,complex_pdb_file,receptor_filename,solvent,min_steps,iteration,ligresname,amberhome)
         
                 # Store the MMGBSA results in the database
-                docking_analysis_utils.store_mmbgsa_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,mmpbsa_decomp_csv_output)
+                docking_analysis_utils.store_mmbgsa_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,mmpbsa_decomp_csv_output, main_fingerprints_folder)
         
             except Exception as e:
                 print(f"Error during MMGBSA fingerprint computation: {e}")
@@ -110,7 +123,6 @@ class DockingAnalysis:
             
             parameters_dict = docking_analysis_utils.retrieve_prolif_parameters_set(prolif_parameters_db,prolif_parameters_set)
             
-            
             # Compute the fingerprint for the docked pose
             figerprints_df = docking_analysis_utils.compute_prolif_fps_for_docked_pose(prmtop_file,crd_file,interactions_list,tleap_vs_cristal_reference_dict, parameters_dict)
                 
@@ -127,7 +139,6 @@ class DockingAnalysis:
             # Store the ProLIF results in the database
             docking_analysis_utils.store_prolif_fingerprints_results_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,complex_pdb_file,prolif_output_csv,prolif_parameters_set)
             
-        
     ### Store the docked pose in the results database if required
         if store_docked_poses == 1:
             docking_analysis_utils.store_docked_pose_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,pose_pdb_file)
@@ -147,20 +158,20 @@ class DockingAnalysis:
         
         print(f"Finished computing the fingerprint for the docked pose. - {elapsed_time} seconds")
         
-    def compute_fingerprints_for_whole_assay(self, assay_id, mmgbsa=1, prolif=1, clean_files=0, clean_folder=0, solvent="implicit", min_steps=5000, stored_docked_poses=1, clean_assay_folder=1, prolif_parameters_set=1):
+    def compute_fingerprints_for_whole_assay(self, assay_id, mmgbsa=1, prolif=1, clean_files=0, clean_folder=0, solvent="implicit", min_steps=5000, stored_docked_poses=1, clean_assay_folder=1, prolif_parameters_set=1, results_table_name="Results"):
         assay_folder = self.docking_assays_path + f'/assay_{assay_id}'
         assay_results_db = f"{assay_folder}/assay_{assay_id}.db"
         
-        print(assay_results_db)
+        # Set the main fingerprints folder
+        main_fingerprints_folder = f"{assay_folder}/fingerprints_analyses_{results_table_name}"
         
-        docked_poses_list = docking_analysis_utils.retrieve_docked_poses_id(assay_results_db)
+        docked_poses_list = docking_analysis_utils.retrieve_docked_poses_id(assay_results_db, results_table_name)
         
-              
         ## Compute the fingerprints using a for loop:
         iteration = 1
         for pose in docked_poses_list:
             # Execute the fingerprint computation for each pose
-            DockingAnalysis.compute_fingerprints_for_docked_pose(self, assay_id, pose, mmgbsa, prolif, clean_files, clean_folder, solvent, min_steps, stored_docked_poses, prolif_parameters_set, iteration=iteration)
+            DockingAnalysis.compute_fingerprints_for_docked_pose(self, assay_id, pose, mmgbsa, prolif, clean_files, clean_folder, solvent, min_steps, stored_docked_poses, prolif_parameters_set, iteration=iteration, results_table_name=results_table_name)
             
             # Add to iteration counter
             iteration += 1
@@ -175,9 +186,9 @@ class DockingAnalysis:
 
         ## Delete the general fingerprint folders if required
         if clean_assay_folder == 1:
-            shutil.rmtree(f"{assay_folder}/fingerprints_analyses")
+            shutil.rmtree(f"{main_fingerprints_folder}")
     
-    def set_prolif_custom_parameters(self,comment=None):
+    def set_prolif_custom_parameters(self,comment=None, results_table_name="Results"):
         """ This function allows the user to set custom parameters for ProLIF computation."""
         
         prolif_parameters_db = self.docking_params_path + "/prolif_parameters.db"    
@@ -202,7 +213,7 @@ class DockingAnalysis:
                     parameter = ''
                 break
         
-        docking_analysis_utils.save_prolif_parameters_set(prolif_parameters_db, parameter, values_dict,comment)
+        docking_analysis_utils.save_prolif_parameters_set(prolif_parameters_db, parameter, values_dict,comment, results_table_name=results_table_name)
         
         
     
