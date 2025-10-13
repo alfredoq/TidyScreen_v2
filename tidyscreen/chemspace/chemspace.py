@@ -113,7 +113,6 @@ class ChemSpace:
         if delete_nulls == 1:
             general_functions.delete_rows_with_any_null(db, table_name)
         
-        
     def retrieve_mols_in_table(self,table_name,outpath=None,ligname=None,pdb=1,mol2_sybyl=1,mol2_gaff2=1,frcmod=1,pdbqt=1,inform=1):
         database_folder = self.project.proj_folders_path["chemspace"]["processed_data"]
         db = f"{database_folder}/chemspace.db"
@@ -372,3 +371,24 @@ class ChemSpace:
         conn.close()
         
         print(f"Successfully saved table '{table_name}' to '{output_path}/{table_name}.csv'")
+        
+    def apply_ersilia_model_on_table(self, table_name, model_id):
+        
+        from ersilia.api import Model
+        
+        # Get the ligands as a dataframe processable by Ersilia Hub
+        db = f"{self.cs_db_path}/chemspace.db"
+        
+        molecules_df = cs_utils.retrieve_table_as_ersilia_df(db, table_name)
+        
+        molecules_list = molecules_df['SMILES'].tolist()
+        
+        mdl = Model(model_id)
+        mdl.fetch()
+        mdl.serve()
+        
+        df = mdl.run(molecules_list)
+        mdl.close()
+        
+        print(df)
+        

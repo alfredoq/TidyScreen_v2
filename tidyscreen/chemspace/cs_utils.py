@@ -2015,4 +2015,10 @@ def write_reaction_attempt_record_to_db(db,reaction_workflow_id,message="Reactio
     print(f"Reaction attempt record written to the database with id: {last_id + 1}")
     
     return table_name
+
+def retrieve_table_as_ersilia_df(db, table_name):
+    conn = tidyscreen.connect_to_db(db)
+    sql=f"SELECT SMILES, inchi_key, name FROM {table_name};"
+    molecules_df = pd.read_sql_query(sql,conn)
     
+    return molecules_df
