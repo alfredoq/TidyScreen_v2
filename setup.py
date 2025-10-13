@@ -13,7 +13,7 @@ setup(name='tidyscreen',
       package_data = {'tidyscreen': ['tidyscreen'],'tidyscreen': ['tidyscreen/projects_db/*.db']},
       include_package_data=True,
       install_requires=[
-        'pandas1',
+        'pandas',
         'rdkit==2023.9.5',
         'openbabel-wheel',
         'pysqlite3',
