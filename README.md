@@ -22,7 +22,10 @@ $ pip install git+https://github.com/alfredoq/TidyScreen_v2
 
 # In order to calculate bcc-ml charges using EspalomaCharge (DOI: https://doi.org/10.1021/acs.jpca.4c01287) install the package:
 
-$ conda install -c conda-forge espaloma_charge openff-toolkit chemicalite
+# $ conda install -c conda-forge espaloma_charge openff-toolkit chemicalite
+
+$ conda install -c conda-forge espaloma_charge chemicalite
+
 ```
 &nbsp;
 
