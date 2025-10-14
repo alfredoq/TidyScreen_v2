@@ -152,7 +152,6 @@ class ChemSpace:
         if delete_nulls == 1:
             general_functions.delete_rows_with_any_null(db, table_name)
         
-        
     def retrieve_mols_in_table(self,table_name,outpath=None,ligname=None,pdb=1,mol2_sybyl=1,mol2_gaff2=1,frcmod=1,pdbqt=1,inform=1):
         """
         Will retrieve the molecular files for all ligands in a given table and store them in a given output folder within the /misc folder of the project
@@ -323,6 +322,19 @@ class ChemSpace:
         cs_utils.list_available_filters_workflows(db)
     
     def subset_table_by_smarts_workflow(self,table_name,workflow_id):
+        """
+        Will subset a given table by a given SMARTS filters workflow and store the result in a new table. The new table name will be generated automatically in sequential order dependienf on the tables that have already been stored. A registry of subsets will be kept in the database in the 'table_subsets' table.
+        Args:
+            table_name (str): Name of the table to be subseted
+            workflow_id (int): ID of the SMARTS filters workflow to be applied. This ID can be obtained using the 'list_available_smarts_filters_workflows' method.
+        Returns:
+            None
+
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.subset_table_by_smarts_workflow("my_ligands_table",1)
+            This will create a new table named "my_ligands_subset_n" (where n is an integer) containing all ligands from "my_ligands_table" that match the SMARTS filters defined in the workflow with ID 1.
+        """
         try:
             db = f"{self.cs_db_path}/chemspace.db"
             # Retrieve the filters instances dict from the database using the workflow_id
@@ -341,26 +353,66 @@ class ChemSpace:
     
     def list_available_smarts_filters(self):
         """
-        Will list all available SMARTS filters in the project
+        Will list all available SMARTS filters in the project as stored in the project database.
+        Args:
+            None
+        Returns:
+            None
+
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.list_available_smarts_filters()
+            This will list all available SMARTS filters in the project database.
         """
         db = self.projects_db
         cs_utils.list_available_smarts_filters(db)
         
     def list_available_smarts_reactions(self):
         """
-        Will list all available SMARTS reactions in the project
+        Will list all available SMARTS reactions stored in the project.
+        Args:
+            None
+        Returns:
+            None
+
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.list_available_smarts_reactions()
+            This will list all available SMARTS reactions in the project database.
         """
         db = self.cs_database_file
         cs_utils.list_available_smarts_reactions(db)
         
     def list_available_reactions_workflows(self,complete_info=0):
         """
-        Will list all available SMARTS reactions in the project
+        Will list all available SMARTS reactions workflows stored in the project database.
+        Args:
+            complete_info (int): If 1, will display the complete information of each workflow. Default is 0.
+        Returns:
+            None    
+
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.list_available_reactions_workflows(complete_info=1)
+            This will list all available SMARTS reactions workflows in the project database with complete information.  
         """
         db = self.cs_database_file
         cs_utils.list_available_smarts_reactions_workflows(db,complete_info)
         
     def add_smarts_reaction(self,smarts_reaction,description=None):
+        """
+        Will add a new SMARTS reaction to the project database.
+        Args:
+            smarts_reaction (str): SMARTS reaction to be added
+            description (str): Description of the SMARTS reaction. Default is None.
+        Returns:
+            None    
+
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.add_smarts_reaction("[C:1]=[O:2]>>[C:1][OH:2]","Reduction_of_Aldehydes_and_Ketones_to_Alcohols")
+            This will add a new SMARTS reaction to the project database with the given SMARTS and description. In this example, the SMARTS reaction will convert aldehydes and ketones to alcohols.
+        """
         try: 
             db = f"{self.cs_db_path}/chemspace.db"
             cs_utils.check_smarts_reaction_existence(db,smarts_reaction)
@@ -458,7 +510,16 @@ class ChemSpace:
         
     def save_table_to_csv(self, table_name):
         """
-        Save the content of a table to a CSV file.
+        Will save a given table to a CSV file in the /misc folder of the project.
+        Args:
+            table_name (str): Name of the table to be saved
+        Returns:
+            None
+
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.save_table_to_csv("my_ligands_table")
+            This will save the table "my_ligands_table" to a CSV file named "my_ligands_table.csv" in the /misc folder of the project.
         """
         db = f"{self.cs_db_path}/chemspace.db"
         conn = sqlite3.connect(db)
