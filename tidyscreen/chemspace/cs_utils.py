@@ -2017,8 +2017,129 @@ def write_reaction_attempt_record_to_db(db,reaction_workflow_id,message="Reactio
     return table_name
 
 def retrieve_table_as_ersilia_df(db, table_name):
+    """
+    Will retrieve a table from the chemspace database and return a list of SMILES strings.
+
+    Args:
+        db (str): Path to the chemspace database.
+        table_name (str): Name of the table to retrieve.
+    Returns:
+        pd.DataFrame: DataFrame with just the SMILES column.
+
+    Example:
+        db = "path/to/chemspace.db"
+        table_name = "my_table"
+        molecules_list = retrieve_table_as_ersilia_df(db, table_name)
+    """
+    
     conn = tidyscreen.connect_to_db(db)
     sql=f"SELECT SMILES, inchi_key, name FROM {table_name};"
     molecules_df = pd.read_sql_query(sql,conn)
+
+    # Check if a SMILES column exists
+    if 'SMILES' not in molecules_df.columns:
+        print(f"The table '{table_name}' does not contain a 'SMILES' column. Stopping...")
+        sys.exit()
+
+    molecules_list = molecules_df['SMILES'].tolist()
+
+    return molecules_list
+
+def add_columns_to_existing_table(db, table_name, filtered_df):
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+
+    # Get existing columns in the table
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    existing_columns = [row[1] for row in cursor.fetchall()]
+
+    # Find new columns that don't exist in the table and exclude columns whose names contain a specific substring
+    exclude_substring = "input" 
+    new_columns = [
+        col for col in filtered_df.columns
+        if col not in existing_columns and exclude_substring not in col
+    ]
+
+    # Exit and inform if for any reason there are no new columns to add
+    if len(new_columns) == 0:
+        print(f"No new columns to add to {table_name}.")
+        return
+
+    # Add new columns to the table
+    for col in new_columns:
+        # Determine data type (you may want to customize this)
+        pandas_dtype = filtered_df[col].dtype  # Detect the datatype of the column 
+
+        # Infer the SQLite data type based on pandas dtype
+        dtype = infer_sqlite_dtype(pandas_dtype)
+
+        # Try the addition of the computed table
+        try:
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {col} {dtype}")
+        except sqlite3.OperationalError as e:
+            print(f"Could not add column {col}: {e}")
     
-    return molecules_df
+    conn.commit()
+    
+    # Update the existing table with data from the DataFrame
+    if not filtered_df.empty:
+        update_table_with_dataframe_data(conn, table_name, filtered_df)
+    
+    conn.close()
+    
+def infer_sqlite_dtype(pandas_dtype):
+
+    """Map pandas dtype to SQLite data type"""
+    dtype_mapping = {
+        'int64': 'INTEGER',
+        'int32': 'INTEGER',
+        'float64': 'REAL',
+        'float32': 'REAL',
+        'object': 'TEXT',
+        'bool': 'INTEGER',
+        'datetime64[ns]': 'TEXT',
+        'category': 'TEXT'
+    }
+    
+    return dtype_mapping.get(str(pandas_dtype), 'TEXT')
+
+
+def update_table_with_dataframe_data(conn, table_name, df):
+    """
+    Update existing table with data from DataFrame.
+    Assumes there's a key column to match rows (like 'key', 'id', or 'inchi_key').
+    """
+    cursor = conn.cursor()
+    
+    # Determine the key column for matching
+    key_column = 'input'
+    
+    # Get all columns except the key column for updating
+    update_columns = [col for col in df.columns if col != key_column]
+    
+    if not update_columns:
+        print("No columns to update.")
+        return
+    
+    # Update each row in the table
+    for idx, row in df.iterrows():
+        if pd.notna(row[key_column]):  # Only update if key is not null
+            # Build the SET clause for the UPDATE statement
+            set_clause = ", ".join([f"{col} = ?" for col in update_columns])
+            values = [row[col] for col in update_columns]
+            values.append(row[key_column])  # Add key value for WHERE clause
+            
+            update_sql = f"UPDATE {table_name} SET {set_clause} WHERE {key_column} = ?"
+            
+            print(update_sql)
+
+
+            # try:
+            #     cursor.execute(update_sql, values)
+            # except sqlite3.Error as e:
+            #     print(f"Error updating row with {key_column}={row[key_column]}: {e}")
+    
+    conn.commit()
+
+    print(f"Updated {len(df)} rows with new column data.")
+

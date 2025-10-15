@@ -373,22 +373,39 @@ class ChemSpace:
         print(f"Successfully saved table '{table_name}' to '{output_path}/{table_name}.csv'")
         
     def apply_ersilia_model_on_table(self, table_name, model_id):
+        """
+        Will apply an Ersilia model on all molecules in a given table and return the results as a DataFrame.
+        Args:
+            table_name (str): Name of the table containing the molecules.
+            model_id (str): ID of the Ersilia model to be applied.
+        Returns:
+            pd.DataFrame: DataFrame containing the results of the model application.    
         
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> results_df = example_project_cs.apply_ersilia_model_on_table("ligands_table","model_id")
+            >>> print(results_df)   
+        """
+
         from ersilia.api import Model
         
         # Get the ligands as a dataframe processable by Ersilia Hub
         db = f"{self.cs_db_path}/chemspace.db"
         
-        molecules_df = cs_utils.retrieve_table_as_ersilia_df(db, table_name)
-        
-        molecules_list = molecules_df['SMILES'].tolist()
+        molecules_smiles_list = cs_utils.retrieve_table_as_ersilia_df(db, table_name)
         
         mdl = Model(model_id)
         mdl.fetch()
         mdl.serve()
         
-        df = mdl.run(molecules_list)
+        df = mdl.run(molecules_smiles_list)
         mdl.close()
         
-        print(df)
+        # Prepend the name of the model to each column in the dataframe except for the 'key' and 'input' columns
+        df = df.rename(columns={col: f"{model_id}_{col}" for col in df.columns if col not in ['key', 'input']})
         
+        # Add the computed properties to the original table in the chemspace database
+        
+        filtered_df = df[df.columns[df.columns.str.contains(f"{model_id}|input", case=False, regex=True)]]
+
+        cs_utils.add_columns_to_existing_table(db, table_name, filtered_df)        
