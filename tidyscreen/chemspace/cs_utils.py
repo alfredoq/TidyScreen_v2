@@ -2045,7 +2045,7 @@ def retrieve_table_as_ersilia_df(db, table_name):
 
     return molecules_list
 
-def add_columns_to_existing_table(db, table_name, filtered_df):
+def add_columns_to_existing_table(db, table_name, filtered_df, model_id):
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
 
@@ -2083,7 +2083,7 @@ def add_columns_to_existing_table(db, table_name, filtered_df):
     
     # Update the existing table with data from the DataFrame
     if not filtered_df.empty:
-        update_table_with_dataframe_data(conn, table_name, filtered_df)
+        update_table_with_dataframe_data(conn, table_name, filtered_df, model_id)
     
     conn.close()
     
@@ -2103,8 +2103,7 @@ def infer_sqlite_dtype(pandas_dtype):
     
     return dtype_mapping.get(str(pandas_dtype), 'TEXT')
 
-
-def update_table_with_dataframe_data(conn, table_name, df):
+def update_table_with_dataframe_data(conn, table_name, df, model_id):
     """
     Update existing table with data from DataFrame.
     Assumes there's a key column to match rows (like 'key', 'id', or 'inchi_key').
@@ -2125,21 +2124,21 @@ def update_table_with_dataframe_data(conn, table_name, df):
     for idx, row in df.iterrows():
         if pd.notna(row[key_column]):  # Only update if key is not null
             # Build the SET clause for the UPDATE statement
-            set_clause = ", ".join([f"{col} = ?" for col in update_columns])
+            set_clause = ", ".join([f"{col} = ?" 
+            for col in update_columns])
+            
             values = [row[col] for col in update_columns]
+            
             values.append(row[key_column])  # Add key value for WHERE clause
             
-            update_sql = f"UPDATE {table_name} SET {set_clause} WHERE {key_column} = ?"
+            update_sql = f"UPDATE {table_name} SET {set_clause} WHERE SMILES = ?"
             
-            print(update_sql)
-
-
-            # try:
-            #     cursor.execute(update_sql, values)
-            # except sqlite3.Error as e:
-            #     print(f"Error updating row with {key_column}={row[key_column]}: {e}")
+            try:
+                cursor.execute(update_sql, values)
+            except sqlite3.Error as e:
+                print(f"Error updating row with {key_column}={row[key_column]}: {e}")
     
     conn.commit()
 
-    print(f"Updated {len(df)} rows with new column data.")
+    print(f"Updated {len(df)} rows with new column data from Model: '{model_id}'.")
 

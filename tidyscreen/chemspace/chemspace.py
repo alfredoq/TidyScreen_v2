@@ -408,4 +408,4 @@ class ChemSpace:
         
         filtered_df = df[df.columns[df.columns.str.contains(f"{model_id}|input", case=False, regex=True)]]
 
-        cs_utils.add_columns_to_existing_table(db, table_name, filtered_df)        
+        cs_utils.add_columns_to_existing_table(db, table_name, filtered_df, model_id)        
