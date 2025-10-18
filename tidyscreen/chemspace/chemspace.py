@@ -9,6 +9,8 @@ from rdkit import RDLogger
 from pandarallel import pandarallel
 import shutil
 import sqlite3
+import sys
+import numpy as np
 # Suppress RDKit warnings and errors
 RDLogger.DisableLog('rdApp.*')
 
@@ -387,25 +389,28 @@ class ChemSpace:
             >>> print(results_df)   
         """
 
-        from ersilia.api import Model
+        #from ersilia.api import Model
         
         # Get the ligands as a dataframe processable by Ersilia Hub
         db = f"{self.cs_db_path}/chemspace.db"
         
         molecules_smiles_list = cs_utils.retrieve_table_as_ersilia_df(db, table_name)
-        
-        mdl = Model(model_id)
-        mdl.fetch()
-        mdl.serve()
-        
-        df = mdl.run(molecules_smiles_list)
-        mdl.close()
-        
-        # Prepend the name of the model to each column in the dataframe except for the 'key' and 'input' columns
-        df = df.rename(columns={col: f"{model_id}_{col}" for col in df.columns if col not in ['key', 'input']})
+
+        df = cs_utils.apply_ersilia_model(model_id, molecules_smiles_list)
         
         # Add the computed properties to the original table in the chemspace database
         
         filtered_df = df[df.columns[df.columns.str.contains(f"{model_id}|input", case=False, regex=True)]]
 
-        cs_utils.add_columns_to_existing_table(db, table_name, filtered_df, model_id)        
+        filtered_df = cs_utils.round_floats_applymap(filtered_df, decimals=2)
+
+        ### Check if the the computed columns do not exist in the target table
+        column_name = df.columns[-1]
+        exists = cs_utils.check_column_exists(db, table_name, column_name)
+
+        if exists:
+            print(f"Column '{column_name}' already exists in table '{table_name}'. No columns were added.")
+            sys.exit(0)
+        
+        else:
+            cs_utils.add_columns_to_existing_table(db, table_name, filtered_df, model_id)
