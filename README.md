@@ -50,8 +50,10 @@ $ pip install git+https://github.com/forlilab/Meeko@develop
 - [Ersilia Models Hub](https://ersilia.gitbook.io/ersilia-book): this package is required if the user intends to use make use of the [Ersilia Open Source Initiative](https://www.ersilia.io/) prediction models as part of chemical space prioritization. To install the hub run the following code within the TidyScreen environment:
 
 ```bash
-$ conda install -c conda-forge ersilia # This will install the latest version of the Ersilia Model Hub
-
+# With the TisyScreen environment activated, clone the source repo and install it:
+$ git clone https://github.com/ersilia-os/ersilia.git
+$ cd ersilia
+$ pip install -e .
 $ bentoml # this action will install the BentoML version required by the Ersilia Model Hub
 ```
 
