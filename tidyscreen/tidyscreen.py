@@ -30,6 +30,22 @@ def connect_to_db(db_file):
     return conn
 
 def projects(print_output=1):
+    """
+    Will list all available projects in the main database.
+    By default, it will print the available projects to screen (print_output=1).
+    If print_output=0, it will return a list of tuples with the available projects. 
+    Args:
+        print_output (int): 1 to print to screen, 0 to return the list of projects.
+    Returns:
+        list of tuples: Each tuple contains (project_name, project_path)
+
+    Example::
+        >>> from tidyscreen import tidyscreen as ts
+        >>> ts.projects()
+        Project: ersilia_tutorial 
+              located at /media/HD2/Trabajos-in-silico/ersilia_tutorial    
+    """
+    
     # Will list available projects in the database.
     check_db(print_output) # Verify the existence of the database
     create_projects_table() # Create the projects table in case it is not present in the .db
@@ -83,6 +99,14 @@ def create_project(path, proj_name):
         sys.exit()
 
 def import_project():
+    """
+    Will import an existing project into the main database.
+    The project folder structure will be checked prior to import.
+    Example::
+        >>> from tidyscreen import tidyscreen as ts
+        >>> ts.import_project()
+    """
+    
     # Request the path to the project to import
     proj_path = input("Input the full path to the project to import: ")
     # Get the name of the project from the path
