@@ -807,7 +807,7 @@ def create_meeko_atoms_dict():
     {"smarts": "[#7X3v3][#6X3v4]", "atype": "N", "comment": "amide"},
     {"smarts": "[#7+1]", "atype": "N", "comment": "ammonium, pyridinium"},
     {"smarts": "[SX2]", "atype": "SA", "comment": "sulfur acceptor"},
-    {"smarts": "[#1][#6X3]:[#6X3]([#6X4])[#7]:[#7][#7][#6X4]", "atype": "HD", "comment": "4,5-H in 1,2,3-triazole"},
+    {"smarts": "[#1][#6X3]:[#6X3]([#6])[#7]:[#7][#7][#6]", "atype": "HD", "comment": "4,5-H in 1,2,3-triazole"},
     ]
 
     return atoms_dict
