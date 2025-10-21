@@ -1,3 +1,7 @@
 #!/bin/bash
 
-rsync -rtuvzhl --delete ./tidyscreen /home/fredy/anaconda3/envs/tidyscreen/lib/python3.10/site-packages
+environment=$(echo $CONDA_DEFAULT_ENV)
+
+rsync -rtuvzhl --delete ./tidyscreen /home/fredy/anaconda3/envs/$environment/lib/python3.12/site-packages
+
+echo "Environment: $environment updated"

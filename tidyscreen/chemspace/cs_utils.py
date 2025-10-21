@@ -25,6 +25,7 @@ import multiprocessing
 from espaloma_charge import charge
 from rdkit.Chem import Descriptors
 import json
+import numpy as np
 
 def check_smiles(smiles):
     
@@ -268,6 +269,7 @@ def save_df_to_db(db,df,table_name):
         
     except Exception as error:
         print(error)
+
 
 def list_ligands_tables(db):
     conn = tidyscreen.connect_to_db(db)
@@ -805,7 +807,7 @@ def create_meeko_atoms_dict():
     {"smarts": "[#7X3v3][#6X3v4]", "atype": "N", "comment": "amide"},
     {"smarts": "[#7+1]", "atype": "N", "comment": "ammonium, pyridinium"},
     {"smarts": "[SX2]", "atype": "SA", "comment": "sulfur acceptor"},
-    {"smarts": "[#1][#6X3]:[#6X3]([#6X4])[#7]:[#7][#7][#6X4]", "atype": "HD", "comment": "4,5-H in 1,2,3-triazole"},
+    {"smarts": "[#1][#6X3]:[#6X3]([#6])[#7]:[#7][#7][#6]", "atype": "HD", "comment": "4,5-H in 1,2,3-triazole"},
     ]
 
     return atoms_dict
@@ -2015,4 +2017,168 @@ def write_reaction_attempt_record_to_db(db,reaction_workflow_id,message="Reactio
     print(f"Reaction attempt record written to the database with id: {last_id + 1}")
     
     return table_name
+
+def retrieve_table_as_ersilia_df(db, table_name):
+    """
+    Will retrieve a table from the chemspace database and return a list of SMILES strings.
+
+    Args:
+        db (str): Path to the chemspace database.
+        table_name (str): Name of the table to retrieve.
+    Returns:
+        pd.DataFrame: DataFrame with just the SMILES column.
+
+    Example:
+        db = "path/to/chemspace.db"
+        table_name = "my_table"
+        molecules_list = retrieve_table_as_ersilia_df(db, table_name)
+    """
     
+    conn = tidyscreen.connect_to_db(db)
+    sql=f"SELECT SMILES, inchi_key, name FROM {table_name};"
+    molecules_df = pd.read_sql_query(sql,conn)
+
+    # Check if a SMILES column exists
+    if 'SMILES' not in molecules_df.columns:
+        print(f"The table '{table_name}' does not contain a 'SMILES' column. Stopping...")
+        sys.exit()
+
+    molecules_list = molecules_df['SMILES'].tolist()
+
+    return molecules_list
+
+def infer_sqlite_dtype(pandas_dtype):
+
+    """Map pandas dtype to SQLite data type"""
+    dtype_mapping = {
+        'int64': 'INTEGER',
+        'int32': 'INTEGER',
+        'float64': 'REAL',
+        'float32': 'REAL',
+        'object': 'TEXT',
+        'bool': 'INTEGER',
+        'datetime64[ns]': 'TEXT',
+        'category': 'TEXT'
+    }
+    
+    return dtype_mapping.get(str(pandas_dtype), 'TEXT')
+
+def update_table_with_dataframe_data(conn, table_name, df, model_id):
+    """
+    Update existing table with data from DataFrame.
+    Assumes there's a key column to match rows (like 'key', 'id', or 'inchi_key').
+    """
+    cursor = conn.cursor()
+    
+    # Determine the key column for matching
+    key_column = 'input'
+    
+    # Get all columns except the key column for updating
+    update_columns = [col for col in df.columns if col != key_column]
+    
+    if not update_columns:
+        print("No columns to update.")
+        return
+    
+    # Update each row in the table
+    for idx, row in df.iterrows():
+        if pd.notna(row[key_column]):  # Only update if key is not null
+            # Build the SET clause for the UPDATE statement
+            set_clause = ", ".join([f"{col} = ?" 
+            for col in update_columns])
+            
+            values = [row[col] for col in update_columns]
+            
+            values.append(row[key_column])  # Add key value for WHERE clause
+            
+            update_sql = f"UPDATE {table_name} SET {set_clause} WHERE SMILES = ?"
+            
+            try:
+                cursor.execute(update_sql, values)
+            except sqlite3.Error as e:
+                print(f"Error updating row with {key_column}={row[key_column]}: {e}")
+    
+    conn.commit()
+
+    print(f"Updated {len(df)} rows with new column data from Model: '{model_id}'.")
+
+def apply_ersilia_model(model_id, molecules_smiles_list):
+    
+    from ersilia.api import Model
+    
+    mdl = Model(model_id)
+    mdl.fetch()
+    mdl.serve()
+        
+    df = mdl.run(molecules_smiles_list)
+    mdl.close()
+
+    # Prepend the name of the model to each column in the dataframe except for the 'key' and 'input' columns
+    df = df.rename(columns={col: f"{model_id}_{col}" for col in df.columns if col not in ['key', 'input']})
+
+    return df 
+
+def add_columns_to_existing_table(db, table_name, filtered_df, model_id):
+
+    # Temporarily save the dataframe to a temporary table
+    save_df_to_db(db, filtered_df, "temp_table")
+
+    # Merge the temp table into the source table using SQLite3
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+
+    # Query to get all table names
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = cursor.fetchall()
+    
+    ## Merge the two tables
+    sql_instruction = f"CREATE TABLE merged_table AS SELECT {table_name}.*, temp_table.* FROM {table_name} LEFT JOIN temp_table ON {table_name}.SMILES = temp_table.input;"
+    
+    cursor.execute(sql_instruction)
+
+    # Drop the common column from the merged table
+    sql_instruction = "ALTER TABLE merged_table DROP COLUMN input;"
+    cursor.execute(sql_instruction)
+
+    # Drop the original table
+    cursor.execute(f"DROP TABLE {table_name};")
+
+    # Drop the temporary table
+    cursor.execute("DROP TABLE temp_table;")
+
+    # Rename the merged table to the original table name
+    cursor.execute(f"ALTER TABLE merged_table RENAME TO {table_name};")
+
+    conn.commit()
+    
+def check_column_exists(db, table_name, column_name):
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+    
+    try:
+        # Get table information
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        columns = cursor.fetchall()
+        
+        # Extract column names (column name is at index 1)
+        column_names = [column[1] for column in columns]
+        
+        # Check if column exists
+        exists = column_name in column_names
+        
+        return exists
+        
+    except sqlite3.Error as e:
+        print(f"Error checking column: {e}")
+        return False
+
+def round_floats_applymap(df, decimals=2):
+    """
+    Use applymap to check and round each cell if it's a float.
+    """
+    def round_if_float(x):
+        if isinstance(x, (float, np.floating)):
+            return round(x, decimals)
+        return x
+    
+    return df.applymap(round_if_float)

@@ -9,6 +9,8 @@ from rdkit import RDLogger
 from pandarallel import pandarallel
 import shutil
 import sqlite3
+import sys
+import numpy as np
 # Suppress RDKit warnings and errors
 RDLogger.DisableLog('rdApp.*')
 
@@ -27,6 +29,12 @@ class ChemSpace:
     def input_csv(self, file, stereo_enum=0):
         """
         Will read a .csv file and store it into de corresponding database
+
+        Args: 
+            file (str): Path to the .csv file
+            stereo_enum (int): If 1, will perform stereochemistry enumeration on the input SMILES. Default is 0.
+        Returns:
+            None
         """
         # Read the csv file and check if the first element is a valid SMILES        
         target_table_name, df, first_element, second_element = general_functions.csv_reader(file) 
@@ -44,9 +52,29 @@ class ChemSpace:
         cs_utils.list_ligands_tables(f"{self.cs_db_path}/chemspace.db")
 
     def delete_table(self,table_name):
+        """
+        Will delete a given ligand table from the project database
+
+        Args:
+            table_name (str): Name of the table to be deleted
+        Returns:
+            None
+        """
         cs_utils.delete_ligands_table(f"{self.cs_db_path}/chemspace.db",table_name)
 
     def depict_ligand_table(self,table_name,max_mols_ppage=25,limit=0,random=False):
+        """
+        Will depict all ligands present in a given table and store the results in a given output folder within the /misc folder of the project
+
+        Args:
+            table_name (str): Name of the table to be depicted
+            max_mols_ppage (int): Maximum number of molecules to be depicted per page. Default is 25.
+            limit (int): If > 0, will limit the number of molecules to be depicted. Default is 0 (no limit).
+            random (bool): If True, will randomly select molecules to be depicted. Default is False.
+        Returns:
+            None
+        """
+        
         db = f"{self.cs_db_path}/chemspace.db"
         #print(self.project.proj_folders_path["chemspace"]["raw_data"])
         output_path = f"{self.project.proj_folders_path['chemspace']['misc']}/{table_name}_depict"
@@ -59,7 +87,20 @@ class ChemSpace:
 
     def generate_mols_in_table(self,table_name,charge="bcc-ml",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10,delete_temp_dir=1,delete_nulls=1):
         """
-        Will process all SMILES present in a given table an generate molecules stored in different formats
+        Will generate the molecular files for all ligands in a given table. These molecular files will be stored as blobs in the corresponding table and further used for docking and MD simulations.
+
+        Args:
+            table_name (str): Name of the table to be processed
+            charge (str): Type of charge to be used for the mol2 file generation. Default is "bcc-ml". Other options are "gas" and "bcc" (this last one will take a long time to compute).
+            pdb (int): If 1, will generate the .pdb files. Default is 1.
+            mol2 (int): If 1, will generate the .mol2 files. Default is 1.
+            pdbqt (int): If 1, will generate the .pdbqt files. Default is 1.
+            conf_rank (int): Conformer rank to be used for the .pdb file generation. Default is 0 (best energy conformer).
+            timeout (int): Timeout in seconds for the .pdb file generation. Default is 10 seconds.
+            delete_temp_dir (int): If 1, will delete the temporary directory used for the file generation. Default is 1.
+            delete_nulls (int): If 1, will delete all rows in the target table in which any file computation may have failed. Default is 1.
+        Returns:
+            None
         """
         # Define the target database (i.e. chemspace)
         db = f"{self.cs_db_path}/chemspace.db"
@@ -113,8 +154,23 @@ class ChemSpace:
         if delete_nulls == 1:
             general_functions.delete_rows_with_any_null(db, table_name)
         
-        
     def retrieve_mols_in_table(self,table_name,outpath=None,ligname=None,pdb=1,mol2_sybyl=1,mol2_gaff2=1,frcmod=1,pdbqt=1,inform=1):
+        """
+        Will retrieve the molecular files for all ligands in a given table and store them in a given output folder within the /misc folder of the project
+        
+        Args:
+            table_name (str): Name of the table to be processed
+            outpath (str): Path to the output folder. If None, will create a folder named '{table_name}_lig_files' within the /misc folder of the project. Default is None.
+            ligname (str): If provided, will retrieve the files for the given ligand name only. Default is None.
+            pdb (int): If 1, will retrieve the .pdb files. Default is 1.
+            mol2_sybyl (int): If 1, will retrieve the .mol2 files with sybyl atom types. Default is 1.
+            mol2_gaff2 (int): If 1, will retrieve the .mol2 files with gaff2 atom types. Default is 1.
+            frcmod (int): If 1, will retrieve the .frcmod files. Default is 1.
+            pdbqt (int): If 1, will retrieve the .pdbqt files. Default is 1.
+            inform (int): If 1, will inform the user of the output path. Default is 1.
+        Returns:
+            None
+        """
         database_folder = self.project.proj_folders_path["chemspace"]["processed_data"]
         db = f"{database_folder}/chemspace.db"
         
@@ -139,6 +195,17 @@ class ChemSpace:
             print(f"Ligands extracted to: \n \t '{outpath}")
 
     def subset_chemspace_table(self,source_table,dest_table,colname,filter):
+        """
+        Will subset the source table by a given column and filter and store the result in the destination table.
+        Args:
+            source_table (str): Name of the source table to be subseted
+            dest_table (str): Name of the destination table to store the subseted data
+            colname (str): Name of the column to be used for filtering
+            filter (str): Filter to be applied on the column
+        Returns:
+            None
+        """
+        
         db = f"{self.project.proj_folders_path['chemspace']['processed_data']}/chemspace.db"
         try:
             general_functions.subset_table(db,source_table,dest_table,colname,filter)
@@ -148,7 +215,11 @@ class ChemSpace:
             
     def purge_failed_in_table(self,table_name):
         """
-        Will purge the table from all rows with null values in any of the mols columns
+        Will purge the original table from failed rows and drop the mols columns in order to recompute them.
+        Args:
+            table_name (str): Name of the table to be purged
+        Returns:
+            None
         """
         db = f"{self.cs_db_path}/chemspace.db"
         # Purge the original table from failed rows
@@ -160,7 +231,12 @@ class ChemSpace:
         
     def compute_properties(self,table_name,properties_list=["MolWt","MolLogP","NumHDonors","NumHAcceptors","NumRotatableBonds","TPSA"]):
         """
-        Will compute the properties for the ligands in the table
+        Will compute a given list of properties for all ligands in a given table and store the results in the same table. If the property column already exists, it will be overwritten. Properties are computed using RDKit, so the list of available properties is limited to those available in RDKit. Please check the RDKit documentation for more information.
+        Args:
+            table_name (str): Name of the table to be processed
+            properties_list (list): List of properties to be computed. Default is ["MolWt","MolLogP","NumHDonors","NumHAcceptors","NumRotatableBonds","TPSA"]
+        Returns:
+            None
         """
         db = f"{self.cs_db_path}/chemspace.db"
         # Read the table into a dataframe
@@ -176,11 +252,17 @@ class ChemSpace:
         
     def subset_table_by_properties(self,table_name,props_filter):
         """
-        Will subset the source table by a given property and store the result in the destination table
+        Will subset a given table by a given properties filter and store the result in a new table. The new table name will be generated automatically based on the source table name and the properties filter. A registry of subsets will be kept in the database in the 'table_subsets' table.
+        Args:
+            table_name (str): Name of the table to be subseted
+            props_filter (str): Properties filter to be applied. The filter should be a list of properties and their corresponding limits. Multiple can be used as diffent items in the list.  
+        Returns:
+            None 
         
-        props_filter: is a list 
-        
-        
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.subset_table_by_properties("my_ligands_table",["MolWt>200", "MolWt<500")
+            This will create a new table named "my_ligands_subset_n" (where n is an integer) containing all ligands from "my_ligands_table" with a molecular weight between 200 and 500.
         """
         db = f"{self.cs_db_path}/chemspace.db"
         try:
@@ -192,6 +274,19 @@ class ChemSpace:
             print(f"Error subseting table {table_name} by property {props_filter} \n {error}")
     
     def add_smarts_filter(self,smarts_filter,description=None):
+        """
+        Will add a new SMARTS filter to the project database.
+        Args:
+            smarts_filter (str): SMARTS filter to be added
+            description (str): Description of the SMARTS filter. Default is None.
+        Returns:
+            None
+
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.add_smarts_filter("[NX3;H1,H2;!$(NC=O)]","Primary_and_Secondary_Amines")
+            This will add a new SMARTS filter to the project database with the given SMARTS and description. In this example, the SMARTS filter will match primary and secondary amines.
+        """
         try: 
             db = self.projects_db
             cs_utils.check_smarts_existence(db,smarts_filter)
@@ -202,7 +297,7 @@ class ChemSpace:
     
     def create_smarts_filters_workflow(self,smarts_filters_dict):
         """
-        Will create a workflow to subset a table by SMARTS filters
+        Will create a workflow of SMARTS filters based on a given dictionary of SMARTS filters.
         """
         db_workflow = f"{self.cs_db_path}/chemspace.db"
         db_filters = self.projects_db
@@ -214,12 +309,34 @@ class ChemSpace:
     
     def list_available_smarts_filters_workflows(self):
         """
-        Will list all available SMARTS filters workflows availbale in the project
+        Will list all available SMARTS filters workflows in the project.
+        Args:
+            None
+        Returns:
+            None    
+        
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.list_available_smarts_filters_workflows()
+            This will list all available SMARTS filters workflows in the project database.
         """
         db = self.cs_database_file
         cs_utils.list_available_filters_workflows(db)
     
     def subset_table_by_smarts_workflow(self,table_name,workflow_id):
+        """
+        Will subset a given table by a given SMARTS filters workflow and store the result in a new table. The new table name will be generated automatically in sequential order dependienf on the tables that have already been stored. A registry of subsets will be kept in the database in the 'table_subsets' table.
+        Args:
+            table_name (str): Name of the table to be subseted
+            workflow_id (int): ID of the SMARTS filters workflow to be applied. This ID can be obtained using the 'list_available_smarts_filters_workflows' method.
+        Returns:
+            None
+
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.subset_table_by_smarts_workflow("my_ligands_table",1)
+            This will create a new table named "my_ligands_subset_n" (where n is an integer) containing all ligands from "my_ligands_table" that match the SMARTS filters defined in the workflow with ID 1.
+        """
         try:
             db = f"{self.cs_db_path}/chemspace.db"
             # Retrieve the filters instances dict from the database using the workflow_id
@@ -238,26 +355,66 @@ class ChemSpace:
     
     def list_available_smarts_filters(self):
         """
-        Will list all available SMARTS filters in the project
+        Will list all available SMARTS filters in the project as stored in the project database.
+        Args:
+            None
+        Returns:
+            None
+
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.list_available_smarts_filters()
+            This will list all available SMARTS filters in the project database.
         """
         db = self.projects_db
         cs_utils.list_available_smarts_filters(db)
         
     def list_available_smarts_reactions(self):
         """
-        Will list all available SMARTS reactions in the project
+        Will list all available SMARTS reactions stored in the project.
+        Args:
+            None
+        Returns:
+            None
+
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.list_available_smarts_reactions()
+            This will list all available SMARTS reactions in the project database.
         """
         db = self.cs_database_file
         cs_utils.list_available_smarts_reactions(db)
         
     def list_available_reactions_workflows(self,complete_info=0):
         """
-        Will list all available SMARTS reactions in the project
+        Will list all available SMARTS reactions workflows stored in the project database.
+        Args:
+            complete_info (int): If 1, will display the complete information of each workflow. Default is 0.
+        Returns:
+            None    
+
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.list_available_reactions_workflows(complete_info=1)
+            This will list all available SMARTS reactions workflows in the project database with complete information.  
         """
         db = self.cs_database_file
         cs_utils.list_available_smarts_reactions_workflows(db,complete_info)
         
     def add_smarts_reaction(self,smarts_reaction,description=None):
+        """
+        Will add a new SMARTS reaction to the project database.
+        Args:
+            smarts_reaction (str): SMARTS reaction to be added
+            description (str): Description of the SMARTS reaction. Default is None.
+        Returns:
+            None    
+
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.add_smarts_reaction("[C:1]=[O:2]>>[C:1][OH:2]","Reduction_of_Aldehydes_and_Ketones_to_Alcohols")
+            This will add a new SMARTS reaction to the project database with the given SMARTS and description. In this example, the SMARTS reaction will convert aldehydes and ketones to alcohols.
+        """
         try: 
             db = f"{self.cs_db_path}/chemspace.db"
             cs_utils.check_smarts_reaction_existence(db,smarts_reaction)
@@ -355,7 +512,16 @@ class ChemSpace:
         
     def save_table_to_csv(self, table_name):
         """
-        Save the content of a table to a CSV file.
+        Will save a given table to a CSV file in the /misc folder of the project.
+        Args:
+            table_name (str): Name of the table to be saved
+        Returns:
+            None
+
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.save_table_to_csv("my_ligands_table")
+            This will save the table "my_ligands_table" to a CSV file named "my_ligands_table.csv" in the /misc folder of the project.
         """
         db = f"{self.cs_db_path}/chemspace.db"
         conn = sqlite3.connect(db)
@@ -372,3 +538,44 @@ class ChemSpace:
         conn.close()
         
         print(f"Successfully saved table '{table_name}' to '{output_path}/{table_name}.csv'")
+        
+    def apply_ersilia_model_on_table(self, table_name, model_id):
+        """
+        Will apply an Ersilia model on all molecules in a given table and return the results as a DataFrame.
+        Args:
+            table_name (str): Name of the table containing the molecules.
+            model_id (str): ID of the Ersilia model to be applied.
+        Returns:
+            pd.DataFrame: DataFrame containing the results of the model application.    
+        
+        Example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> results_df = example_project_cs.apply_ersilia_model_on_table("ligands_table","model_id")
+            >>> print(results_df)   
+        """
+
+        #from ersilia.api import Model
+        
+        # Get the ligands as a dataframe processable by Ersilia Hub
+        db = f"{self.cs_db_path}/chemspace.db"
+        
+        molecules_smiles_list = cs_utils.retrieve_table_as_ersilia_df(db, table_name)
+
+        df = cs_utils.apply_ersilia_model(model_id, molecules_smiles_list)
+        
+        # Add the computed properties to the original table in the chemspace database
+        
+        filtered_df = df[df.columns[df.columns.str.contains(f"{model_id}|input", case=False, regex=True)]]
+
+        filtered_df = cs_utils.round_floats_applymap(filtered_df, decimals=2)
+
+        ### Check if the the computed columns do not exist in the target table
+        column_name = df.columns[-1]
+        exists = cs_utils.check_column_exists(db, table_name, column_name)
+
+        if exists:
+            print(f"Column '{column_name}' already exists in table '{table_name}'. No columns were added.")
+            sys.exit(0)
+        
+        else:
+            cs_utils.add_columns_to_existing_table(db, table_name, filtered_df, model_id)

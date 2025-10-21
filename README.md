@@ -16,13 +16,13 @@ A core feature common to TidyScreen philosophy is the use of [SQL databases](htt
 #### Installation
 
 ```bash
-$ conda create -n tidyscreen python=3.10 chemicalite
+$ conda create -n tidyscreen python=3.12 
 $ conda activate tidyscreen
 $ pip install git+https://github.com/alfredoq/TidyScreen_v2
 
-# In order to calculate bcc-ml charges using EspalomaCharge (DOI: https://doi.org/10.1021/acs.jpca.4c01287) install the package:
+# Next, we will install several accesory packages required by TidyScreen
+$ conda install -c conda-forge espaloma_charge chemicalite
 
-$ conda install -c conda-forge espaloma_charge openff-toolkit # Installation using 'mamba' instead of 'conda' is suggested         
 ```
 &nbsp;
 
@@ -47,6 +47,28 @@ $ pip install git+https://github.com/forlilab/Meeko@develop
 &nbsp;
 - [Amber](https://ambermd.org/) MD engine: this software package is required to confer TidyScreen the capability to prepare and document molecular dynamics simulations of docked poses.
 
----
+- [Ersilia Models Hub](https://ersilia.gitbook.io/ersilia-book): this package is required if the user intends to use make use of the [Ersilia Open Source Initiative](https://www.ersilia.io/) prediction models as part of chemical space prioritization. To install the hub run the following code within the TidyScreen environment:
+
+```bash
+# With the TisyScreen environment activated, clone the source repo and install it:
+$ git clone https://github.com/ersilia-os/ersilia.git
+$ cd ersilia
+$ pip install -e .
+$ bentoml # this action will install the BentoML version required by the Ersilia Model Hub
+```
+
+- [Docker](https://www.docker.com/products/docker-desktop/): Ersilia Models Hub requires a system-wide installation of Docker (container management system). Installation instructions for different operating systems can be found [here](https://docs.docker.com/desktop/setup/install/linux/), while instructions specific for Ubuntu can be found [here](https://docs.docker.com/desktop/setup/install/linux/ubuntu/)
+
+- [Redis server}(https://redis.io/open-source/):
+
+```bash
+$ sudo apt-get update
+$ sudo apt-get install redis-server
+$ sudo systemctl start redis-server
+$ sudo systemctl enable redis-server
+
+# Check that the server is running:
+$ redis-cli ping #It should reply with PONG.
+```
 
 In order to use TidyScreen, users can access the [documentation](https://alfredoq.github.io/TidyScreen_v2_docs_new/) describing the project and specific working examples.
