@@ -630,35 +630,7 @@ def compute_frcmod_file(mol2_file,at):
     
     return output_tar_file
     
-def pdbqt_from_mol2(mol2_file):
-    # Load the corresponding .mol2 file 
-    file_prefix = mol2_file.split('/')[-1].replace('_sybyl.mol2','')
-    
-    try:
-        mol = Chem.MolFromMol2File(mol2_file,removeHs=False)
-    except:
-        print(mol2_file)
-    
-    atoms_dict = create_meeko_atoms_dict()
-    mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="read", charge_atom_prop="_TriposPartialCharge",add_atom_types=atoms_dict)
-    
-    mol_setup_list = mk_prep(mol)
-    molsetup = mol_setup_list[0]
 
-    pdbqt_string = PDBQTWriterLegacy.write_string(molsetup)
-    
-    pdbqt_outfile = f'/tmp/{file_prefix}/{file_prefix}_tmp.pdbqt'
-    with open(pdbqt_outfile,'w') as pdbqt_file:
-        pdbqt_file.write(pdbqt_string[0])
-
-    # In this section, .pdbqt atoms will be renamed to match the original .mol2 file
-
-    atom_names, atom_ref_coords = get_atom_names_from_mol2(mol2_file)
-    renamed_pdbqt_file = rename_pdbqt_file(pdbqt_outfile,atom_names, atom_ref_coords,file_prefix)
-
-    tar_pdbqt_file = generate_tar_file(renamed_pdbqt_file)
-    
-    return tar_pdbqt_file
 
 def store_file_as_blob(db,table_name,colname,file,row):
     conn = tidyscreen.connect_to_db(db)
@@ -1035,14 +1007,18 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
             
             # Compute and store in the db the gaff type mol2
             gaff_mol2_output_file, gaff_output_tar_file = gaff_mol2_from_pdb(row["inchi_key"],charge,temp_dir)
+            
             # Store the GAFF like file
             #store_file_as_blob(db,table_name,'mol2_file_gaff',gaff_output_tar_file,row)
             store_file_as_blob_with_retry(db,table_name,'mol2_file_gaff',gaff_output_tar_file,row)
+            
             # Compute the frcmod file
             output_tar_frcmod = compute_frcmod_file(gaff_mol2_output_file,at="gaff")
+            
             # Store the frcmod file
             #store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
             store_file_as_blob_with_retry(db,table_name,'frcmod_file',output_tar_frcmod,row)
+            
             # Store the charge model used
             store_string_in_column(db,table_name,"charge_model",charge,row)
         
@@ -1173,6 +1149,39 @@ def compute_and_store_pdbqt(row,db,table_name,temp_dir):
     except Exception as error:
         fail_message = f"Failed at .pdbqt molecule computation step - Mol id: {row['id']}"
         general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)    
+
+def pdbqt_from_mol2(mol2_file):
+    # Load the corresponding .mol2 file 
+    file_prefix = mol2_file.split('/')[-1].replace('_sybyl.mol2','')
+    
+    try:
+        mol = Chem.MolFromMol2File(mol2_file,removeHs=False)
+    except:
+        print(mol2_file)
+    
+    atoms_dict = create_meeko_atoms_dict()
+    mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="read", charge_atom_prop="_TriposPartialCharge",add_atom_types=atoms_dict)
+    
+    mol_setup_list = mk_prep(mol)
+    molsetup = mol_setup_list[0]
+
+    pdbqt_string = PDBQTWriterLegacy.write_string(molsetup)
+    
+    pdbqt_outfile = f'/tmp/{file_prefix}/{file_prefix}_tmp.pdbqt'
+    
+    print(pdbqt_outfile)
+    
+    with open(pdbqt_outfile,'w') as pdbqt_file:
+        pdbqt_file.write(pdbqt_string[0])
+
+    # In this section, .pdbqt atoms will be renamed to match the original .mol2 file
+
+    atom_names, atom_ref_coords = get_atom_names_from_mol2(mol2_file)
+    renamed_pdbqt_file = rename_pdbqt_file(pdbqt_outfile,atom_names, atom_ref_coords,file_prefix)
+
+    tar_pdbqt_file = generate_tar_file(renamed_pdbqt_file)
+    
+    return tar_pdbqt_file
     
 def test_dummy_conformer(smiles,nbr_confs,maxIters):
     mol = Chem.MolFromSmiles(smiles)
