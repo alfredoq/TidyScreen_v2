@@ -85,7 +85,7 @@ class ChemSpace:
         
         print(f"Successfully depicted ligands in table: '{output_path}'")
 
-    def generate_mols_in_table(self,table_name,charge="bcc-ml",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10,delete_temp_dir=1,delete_nulls=1):
+    def generate_mols_in_table(self,table_name,charge="bcc-ml",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10,delete_temp_dir=1,delete_nulls=1, pdbqt_method="third_party"):
         """
         Will generate the molecular files for all ligands in a given table. These molecular files will be stored as blobs in the corresponding table and further used for docking and MD simulations.
 
@@ -99,6 +99,7 @@ class ChemSpace:
             timeout (int): Timeout in seconds for the .pdb file generation. Default is 10 seconds.
             delete_temp_dir (int): If 1, will delete the temporary directory used for the file generation. Default is 1.
             delete_nulls (int): If 1, will delete all rows in the target table in which any file computation may have failed. Default is 1.
+            pdbqt_method (str): Method to be used for the .pdbqt file generation. Default is "tird_party". Other option is "meeko", which works specifically for gasteiger ('gas') charges.
         Returns:
             None
         """
@@ -106,10 +107,13 @@ class ChemSpace:
         db = f"{self.cs_db_path}/chemspace.db"
         # Create the list of columns to create
         list_mol_objects_colnames, list_mol_objects_colnames_types = cs_utils.create_mols_columns_from_selection(pdb,mol2,pdbqt)
+        
         # Connect to the chemspace database
         conn = tidyscreen.connect_to_db(db)
+        
         # Check the existence of the columns in target table. Inform and exist if exists
         cs_utils.check_columns_existence_in_table(conn, table_name, list_mol_objects_colnames)
+        
         # Create the corresponding mols columns in the target table
         cs_utils.create_mols_columns(conn, table_name,list_mol_objects_colnames,list_mol_objects_colnames_types)
         # Read target table into dataframe
@@ -117,6 +121,7 @@ class ChemSpace:
         # Define a temp_dir were all intermeadiate files will be stored
         temp_dir = f"{self.cs_db_path}/temp_dir"
         os.makedirs(temp_dir,exist_ok=True) # Create the corresponding temp directory
+        
         if pdb == 1:
             print("Computing .pdb files for ligands")
             # Compute and store the .pdb files using pandarallel
@@ -126,6 +131,7 @@ class ChemSpace:
             if delete_nulls == 1:
                 # Delete all rows in the target table in which .mol2 computation may have failed (errors were registered accondingly)
                 general_functions.delete_nulls_table(db,table_name,"pdb_file")
+        
         if mol2 == 1:
             print("Computing .mol2 files for ligands")
             # Get the atom types dictionary for sybyl to gaff2 conversion
@@ -140,8 +146,12 @@ class ChemSpace:
                 general_functions.delete_nulls_table(db,table_name,"mol2_file_gaff")
         
         if pdbqt == 1:
+            if charge != "gas" and pdbqt_method == "meeko":
+                print("WARNING: When using 'meeko' for .pdbqt generation, it is required to use 'gas' charges for better results. Stopping")
+                sys.exit(1)
+            
             print("Computing .pdbqt files for ligands")
-            df.parallel_apply(lambda row: cs_utils.compute_and_store_pdbqt(row,db,table_name,temp_dir), axis=1)
+            df.parallel_apply(lambda row: cs_utils.compute_and_store_pdbqt(row, db, table_name, temp_dir, pdbqt_method), axis=1)
             
             if delete_nulls == 1:
                 # Purge the rows in which the .pdbqt computation may have failed

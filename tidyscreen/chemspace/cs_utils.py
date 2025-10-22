@@ -270,7 +270,6 @@ def save_df_to_db(db,df,table_name):
     except Exception as error:
         print(error)
 
-
 def list_ligands_tables(db):
     conn = tidyscreen.connect_to_db(db)
     cursor = conn.cursor()
@@ -452,7 +451,8 @@ def check_columns_existence_in_table(conn,table_name,columns_list):
         
     columns = [row[1] for row in cursor.fetchall()]
     # Return True if all items in 'columns_list' already exist as columns in 'table_name'
-    if all(item in columns for item in columns_list):
+    #if all(item in columns for item in columns_list):
+    if any(item in columns for item in columns_list):
         print(f"The columns: {columns_list} already exist in '{table_name}'.")
         response = input("Do you want to delete these columns and continue? (y/n): ")
         if response.lower() == 'y':
@@ -528,6 +528,8 @@ def pdb_from_smiles(smiles,inchi_key,dir,conf_rank):
         pdb_file = save_ligand_pdb_file(selected_mol,inchi_key,dir)
         # Compute the net charge of the molecule for potential use in antechamber
         net_charge = compute_molecule_net_charge(mol)
+        
+        print(pdb_file)
         
         # Compress the pdb_file
         tar_pdb_file = generate_tar_file(pdb_file)
@@ -629,36 +631,6 @@ def compute_frcmod_file(mol2_file,at):
     output_tar_file = generate_tar_file(output_file)
     
     return output_tar_file
-    
-def pdbqt_from_mol2(mol2_file):
-    # Load the corresponding .mol2 file 
-    file_prefix = mol2_file.split('/')[-1].replace('_sybyl.mol2','')
-    
-    try:
-        mol = Chem.MolFromMol2File(mol2_file,removeHs=False)
-    except:
-        print(mol2_file)
-    
-    atoms_dict = create_meeko_atoms_dict()
-    mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="read", charge_atom_prop="_TriposPartialCharge",add_atom_types=atoms_dict)
-    
-    mol_setup_list = mk_prep(mol)
-    molsetup = mol_setup_list[0]
-
-    pdbqt_string = PDBQTWriterLegacy.write_string(molsetup)
-    
-    pdbqt_outfile = f'/tmp/{file_prefix}/{file_prefix}_tmp.pdbqt'
-    with open(pdbqt_outfile,'w') as pdbqt_file:
-        pdbqt_file.write(pdbqt_string[0])
-
-    # In this section, .pdbqt atoms will be renamed to match the original .mol2 file
-
-    atom_names, atom_ref_coords = get_atom_names_from_mol2(mol2_file)
-    renamed_pdbqt_file = rename_pdbqt_file(pdbqt_outfile,atom_names, atom_ref_coords,file_prefix)
-
-    tar_pdbqt_file = generate_tar_file(renamed_pdbqt_file)
-    
-    return tar_pdbqt_file
 
 def store_file_as_blob(db,table_name,colname,file,row):
     conn = tidyscreen.connect_to_db(db)
@@ -755,33 +727,6 @@ def get_atom_names_from_mol2(mol2_file):
                 atom_ref_coord.append((x_coord,y_coord,z_coord)) # Construct a tuple containing the x,y,z coordinates
   
     return atom_names, atom_ref_coord
-
-def rename_pdbqt_file(target_pdqbt_file,atom_names, atom_ref_coords,file_prefix):
-    output_file = f"/tmp/{file_prefix}/{file_prefix}.pdbqt"
-    with open(target_pdqbt_file,'r') as readfile, open(output_file,'w') as writefile:
-        for line in readfile:
-            line_split = line.rstrip().split()
-            if line_split[0] == "ATOM":
-                # Construct a tuple containing (x,y,z) coordinates
-                x_coord = (round(float(line_split[5]),3))
-                y_coord = (round(float(line_split[6]),3))
-                z_coord = (round(float(line_split[7]),3))
-                coords_tuple = (x_coord,y_coord,z_coord)
-                if coords_tuple in atom_ref_coords:
-                    # Get the index of the corresponding coordinates tuple
-                    index = atom_ref_coords.index(coords_tuple)
-                    # Replace the atom name
-                    line_split[2] = atom_names[index]
-                    # Parse a new line be written to the renamed .pdbqt file
-                    column_widths = [9, 4, 4, 8, 6, 7, 8, 8, 6, 6, 10, 3]
-                    # Format the line in accordance to .pdbqt 
-                    formated_line = line_split[0].ljust(column_widths[0]) + line_split[1].ljust(column_widths[1]) + line_split[2].ljust(column_widths[2]) + line_split[3].ljust(column_widths[3]) + line_split[4].ljust(column_widths[4]) + line_split[5].rjust(column_widths[5]) + line_split[6].rjust(column_widths[6]) + line_split[7].rjust(column_widths[7]) + line_split[8].rjust(column_widths[8]) + line_split[9].rjust(column_widths[9]) + line_split[10].rjust(column_widths[10]) + " " + line_split[11].ljust(column_widths[11])
-                    # Write the formatted line to the output file
-                    writefile.write(f"{formated_line} \n")
-            else:
-                writefile.write(line)
-    
-    return output_file
 
 def create_meeko_atoms_dict():
     atoms_dict = [{"smarts": "[#1]", "atype": "H",},
@@ -1035,14 +980,18 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
             
             # Compute and store in the db the gaff type mol2
             gaff_mol2_output_file, gaff_output_tar_file = gaff_mol2_from_pdb(row["inchi_key"],charge,temp_dir)
+            
             # Store the GAFF like file
             #store_file_as_blob(db,table_name,'mol2_file_gaff',gaff_output_tar_file,row)
             store_file_as_blob_with_retry(db,table_name,'mol2_file_gaff',gaff_output_tar_file,row)
+            
             # Compute the frcmod file
             output_tar_frcmod = compute_frcmod_file(gaff_mol2_output_file,at="gaff")
+            
             # Store the frcmod file
             #store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
             store_file_as_blob_with_retry(db,table_name,'frcmod_file',output_tar_frcmod,row)
+            
             # Store the charge model used
             store_string_in_column(db,table_name,"charge_model",charge,row)
         
@@ -1052,6 +1001,8 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
             
             # Compute the bbc-ml charges using the precomputed bbc-ml model - Alternative with timeout
             charge_array = general_functions.timeout_function(compute_bbc_ml_array,(row["SMILES"],row["inchi_key"],temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'compute_bbc_ml_array' computation"])
+            
+            print(charge_array)
             
             # Compute the charge using a fake 'gas' model to be replaced computing SYBYL atom types - Alternative with timeout
             sybyl_mol2_output_file, sybyl_output_tar_file = general_functions.timeout_function(sybyl_mol2_from_pdb,(row["inchi_key"],"gas",temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'sybyl_mol2_from_pdb' computation"])
@@ -1153,27 +1104,88 @@ def rename_sybyl_to_gaff_mol2(row,db,table_name,temp_dir,atom_types_dict):
     
     return mol2_gaff_file, output_tar_file
     
-def compute_and_store_pdbqt(row,db,table_name,temp_dir):
+def compute_and_store_pdbqt(row, db, table_name, temp_dir, pdbqt_method):
     try:
-                      
         
         # Prepare and store the corresponding .pdbqt file - Alternative with timeout
-        tar_pdbqt_file = pdbqt_from_mol2(f"{temp_dir}/{row['inchi_key']}_sybyl.mol2")
+        mol2_file = f"{temp_dir}/{row['inchi_key']}_sybyl.mol2"
+        
+        tar_pdbqt_file = pdbqt_from_mol2(mol2_file, temp_dir, pdbqt_method)
         
         # Prepare and store the corresponding .pdbqt file
-        #tar_pdbqt_file = general_functions.timeout_function(pdbqt_from_mol2,(f"{temp_dir}/{row['inchi_key']}_sybyl.mol2"),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdbqt_from_mol2' computation"])
-        
-        
         store_file_as_blob(db,table_name,'pdbqt_file',tar_pdbqt_file,row)
     
         # Store the resulting file
         #store_string_in_column(db,table_name,'pdbqt_file',tar_pdbqt_file,row)
     
-    
     except Exception as error:
         fail_message = f"Failed at .pdbqt molecule computation step - Mol id: {row['id']}"
         general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)    
+
+def pdbqt_from_mol2(mol2_file, temp_dir, pdbqt_method):
+    # Load the corresponding .mol2 file 
+    file_prefix = mol2_file.split('/')[-1].replace('_sybyl.mol2','')
     
+    try:
+        mol = Chem.MolFromMol2File(mol2_file,removeHs=False)
+    except:
+        print(mol2_file)
+    
+    atoms_dict = create_meeko_atoms_dict()
+    
+    if pdbqt_method == "meeko":
+        mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="gasteiger", add_atom_types=atoms_dict)
+    else:
+        mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="read", charge_atom_prop="_TriposPartialCharge",add_atom_types=atoms_dict)
+    
+    mol_setup_list = mk_prep(mol)
+    molsetup = mol_setup_list[0]
+
+    pdbqt_string = PDBQTWriterLegacy.write_string(molsetup)
+    
+    #pdbqt_outfile = f'/tmp/{file_prefix}/{file_prefix}_tmp.pdbqt'
+    pdbqt_outfile = f'{temp_dir}/{file_prefix}_tmp.pdbqt'
+    
+    with open(pdbqt_outfile,'w') as pdbqt_file:
+        pdbqt_file.write(pdbqt_string[0])
+
+    # In this section, .pdbqt atoms will be renamed to match the original .mol2 file
+    atom_names, atom_ref_coords = get_atom_names_from_mol2(mol2_file)
+    renamed_pdbqt_file = rename_pdbqt_file(pdbqt_outfile,atom_names, atom_ref_coords,file_prefix, temp_dir)
+
+    tar_pdbqt_file = generate_tar_file(renamed_pdbqt_file)
+    
+    return tar_pdbqt_file
+
+def rename_pdbqt_file(target_pdqbt_file, atom_names, atom_ref_coords, file_prefix, temp_dir):
+    #output_file = f"/tmp/{file_prefix}/{file_prefix}.pdbqt"
+    output_file = f"{temp_dir}/{file_prefix}.pdbqt"
+    
+    with open(target_pdqbt_file,'r') as readfile, open(output_file,'w') as writefile:
+        for line in readfile:
+            line_split = line.rstrip().split()
+            if line_split[0] == "ATOM":
+                # Construct a tuple containing (x,y,z) coordinates
+                x_coord = (round(float(line_split[5]),3))
+                y_coord = (round(float(line_split[6]),3))
+                z_coord = (round(float(line_split[7]),3))
+                coords_tuple = (x_coord,y_coord,z_coord)
+                if coords_tuple in atom_ref_coords:
+                    # Get the index of the corresponding coordinates tuple
+                    index = atom_ref_coords.index(coords_tuple)
+                    # Replace the atom name
+                    line_split[2] = atom_names[index]
+                    # Parse a new line be written to the renamed .pdbqt file
+                    column_widths = [9, 4, 4, 8, 6, 7, 8, 8, 6, 6, 10, 3]
+                    # Format the line in accordance to .pdbqt 
+                    formated_line = line_split[0].ljust(column_widths[0]) + line_split[1].ljust(column_widths[1]) + line_split[2].ljust(column_widths[2]) + line_split[3].ljust(column_widths[3]) + line_split[4].ljust(column_widths[4]) + line_split[5].rjust(column_widths[5]) + line_split[6].rjust(column_widths[6]) + line_split[7].rjust(column_widths[7]) + line_split[8].rjust(column_widths[8]) + line_split[9].rjust(column_widths[9]) + line_split[10].rjust(column_widths[10]) + " " + line_split[11].ljust(column_widths[11])
+                    # Write the formatted line to the output file
+                    writefile.write(f"{formated_line} \n")
+            else:
+                writefile.write(line)
+    
+    return output_file
+
 def test_dummy_conformer(smiles,nbr_confs,maxIters):
     mol = Chem.MolFromSmiles(smiles)
     mol_hs = Chem.AddHs(mol)
