@@ -100,8 +100,11 @@ def create_project(path, proj_name):
 
 def import_project():
     """
-    Will import an existing project into the main database.
-    The project folder structure will be checked prior to import.
+    Will import an existing project into the main database. The project folder structure will be checked prior to import. The corresponding project path and description will be requested.
+    Args:
+        None
+    Returns:
+        None    
     Example::
         >>> from tidyscreen import tidyscreen as ts
         >>> ts.import_project()
