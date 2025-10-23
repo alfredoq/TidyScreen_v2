@@ -1,6 +1,12 @@
 from tidyscreen.moldock import moldock_utils as moldock_utils
 from tidyscreen import tidyscreen as tidyscreen
 import sys
+from biobb_amber.pdb4amber.pdb4amber_run import pdb4amber_run
+import io
+from contextlib import redirect_stdout
+from tidyscreen.chemspace import cs_utils as cs_utils
+import os
+
 
 class MolDock:
     
@@ -11,7 +17,68 @@ class MolDock:
         self.docking_params_path = self.project.proj_folders_path["docking"]["params"]    
         self.receptor_models_path = self.project.proj_folders_path["docking"]["receptors"]
         self.ligands_db = self.project.proj_folders_path["chemspace"]['processed_data'] + "/chemspace.db"
+        print("MolDock dimension activated.")
     
+    def process_raw_pdb(self, pdb_file, create_dlg_file=True, clean_files=True, x_coord='X', y_coord='Y', z_coord='Z', x_points="X", y_points="Y", z_points="Z"):  
+        """
+        Will process a raw pdb file using pdb4amber from biobb_amber package. The processed pdb file will be used to generate the receptor mol2 and pdqbt files required for docking with MolDock.
+        Args:
+            pdb_file (str): Path to the raw pdb file to process
+            clean_files (bool): If True, intermediate files generated during the process will be removed. Defaults to True.
+        Returns:
+            None        
+        
+        Example:
+            >>> la_workshop_moldock.process_raw_pdb("/path/to/raw_receptor.pdb", clean_files=True)  
+        
+        """
+        if os.path.isfile(pdb_file):
+            original_pdb_file = pdb_file
+            pass
+        else:
+            print(f"File {pdb_file} does not exist.")
+            sys.exit()
+
+        # Create a description file to store with the receptor model
+        description = input("Please provide a brief description to store with the receptor model: ") # Will be stored when cleaning the receptor directory
+
+        moldock_utils.store_receptor_description(description, pdb_file)
+
+        # Will check if multiple chainsmoldock_utils. are present in the pdb file
+        
+        chains = moldock_utils.check_pdb_file_chains(pdb_file)
+
+        # If there are multiple chains, inform the user and ask which chain to keep
+        if len(chains) > 1:
+            pdb_file = moldock_utils.process_multichain_pdb_file(pdb_file, chains)
+
+        output_file = moldock_utils.check_pdb_file_resnumbers(pdb_file)
+
+        output_info = moldock_utils.process_pdb_with_pdb4amber(pdb_file) 
+
+        non_standard_resids = moldock_utils.get_non_standard_residues(output_info)
+        
+        if len(non_standard_resids) > 0:
+            
+            # Query if a non-standard residue is to be kept as part of the receptor
+            moldock_utils.manage_non_standard_residues(pdb_file, non_standard_resids, output_file, clean_files)
+            
+            # Query if any non-standard residue is to be kept as a reference file
+            moldock_utils.create_non_standard_ref_file(pdb_file, non_standard_resids, output_file, clean_files)
+            
+        else:
+            
+            mol2_file = moldock_utils.prepare_receptor_mol2_only_protein(output_file, clean_files)
+            
+            moldock_utils.prepare_pdqbt_file(mol2_file)
+
+        if create_dlg_file:
+            moldock_utils.create_receptor_dlg_file(pdb_file, x_coord, y_coord, z_coord, x_points, y_points, z_points)
+
+        if clean_files:
+            moldock_utils.clean_receptor_dir(original_pdb_file)
+
+
     def input_receptor(self,folder):
         """
         Will read a folder in which all files corresponding to a receptor model (including grids) are present. A '.tar' file containing all subfiles will be stored in the corresponding database
@@ -89,4 +156,3 @@ class MolDock:
         # Create the docking script
         
         moldock_utils.create_docking_executable(assay_folder,custom_parameter_string)
-        
