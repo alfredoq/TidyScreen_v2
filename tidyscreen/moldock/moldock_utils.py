@@ -670,8 +670,6 @@ def prepare_pdqbt_file(mol2_file):
     # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
     prepare_receptor_command = f'cd {file_path} && {prepare_receptor_path} -r {mol2_file} -C'
     
-    print(prepare_receptor_command)
-    
     # Execute the command
     subprocess.run(prepare_receptor_command, shell=True, capture_output=True, text=True)
     
@@ -680,3 +678,168 @@ def prepare_pdqbt_file(mol2_file):
     else:
         print(f"File {output_file} was not created. Stopping.")
         sys.exit()
+        
+def check_pdb_file_chains(pdb_file):
+    """
+    Will return a set with the chain identifiers present in the pdb file.
+    Args:
+        pdb_file (str): Path to the PDB file.
+    Returns:
+        set: A set containing the unique chain identifiers.
+    
+    Example:
+        chains = check_pdb_file_chains("example.pdb")
+        print(chains)  # Output: {'A', 'B', 'C'}    
+    
+    """
+    chains = set()
+    
+    if not os.path.exists(pdb_file):
+        print(f"Error: File {pdb_file} does not exist.")
+        return None
+    
+    try:
+        with open(pdb_file, 'r') as f:
+            for line in f:
+                if line.startswith(('ATOM', 'HETATM')):
+                    chain_id = line[21].strip()
+                    if chain_id:  # Skip empty chain IDs
+                        chains.add(chain_id)
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        return None
+    
+    return chains
+
+def process_multichain_pdb_file(pdb_file, chains):
+    print(f"Chains detected: {chains}")    
+    chain_to_keep = input("Provide the chain identifier to mantain: ('all' to keep all chains') ")
+    
+    # Check if the user wants to mantain all chains
+    if chain_to_keep.lower() == 'all':
+        print("All chains will be mantained.")
+        return pdb_file
+    
+    # Check if the provided chain is valid
+    if chain_to_keep not in chains:
+        print(f"Error: Chain '{chain_to_keep}' not found in the PDB file. Stopping.")
+        sys.exit()  
+        
+    output_file = pdb_file.replace('.pdb',f'_chain_{chain_to_keep}.pdb')
+    
+    with open(pdb_file, 'r') as infile, open(output_file, 'w') as outfile:
+        for line in infile:
+            if line.startswith(('ATOM', 'HETATM')):
+                current_chain = line[21].strip()
+                if current_chain == chain_to_keep:
+                    outfile.write(line)
+    
+    return output_file
+
+def clean_receptor_dir(pdb_file):
+    
+    pdb_directory = '/'.join(pdb_file.split('/')[:-1])
+    
+    temp_files = glob(f"{pdb_directory}/*")
+    
+    files_to_retain = [f"{pdb_directory}/receptor.mol2",
+                       f"{pdb_directory}/receptor.pdbqt",
+                       f"{pdb_directory}/reference_ligand.pdb",
+                       f"{pdb_directory}/receptor.gpf",
+                       pdb_file,
+                       ]
+    
+    # Delete the files that should not be retained
+    for file in temp_files:
+        if file not in files_to_retain:
+            os.remove(file)
+
+def manage_non_standard_residues(pdb_file, non_standard_resids, output_file, clean_files):
+    
+    mantain_non_standard = input(f"The following non-standard residues were found in the pdb file: {non_standard_resids}. Do you want to mantain ONE of them in the processed receptor pdb file? (y/n): ")
+            
+    if mantain_non_standard.lower() == 'y':
+        residue_to_mantain = input("Type the 3-letter code of the residue you want to mantain: ")
+                
+        if residue_to_mantain in non_standard_resids:
+            ligand_filename = reinsert_non_standard_residue(pdb_file, output_file, residue_to_mantain)
+                    
+            print(f"The non-standard residue {residue_to_mantain} has been reinserted in the processed pdb file.")
+        else:
+
+            print(f"The residue {residue_to_mantain} is not in the list of non-standard residues found. No residues were reinserted.")
+
+    else:
+        print("Only the protein will be kept in the processed pdb file.")    
+                
+        mol2_file = prepare_receptor_mol2_only_protein(output_file, clean_files)
+                
+        prepare_pdqbt_file(mol2_file)
+    
+    
+def create_non_standard_ref_file(pdb_file, non_standard_resids, output_file, clean_files):
+    
+    mantain_non_standard = input(f"The following non-standard residues were found in the pdb file: {non_standard_resids}. Do you want to mantain ONE of them as a REFERENCE pdb file? (y/n): ")
+    
+    if mantain_non_standard.lower() == 'y':
+        residue_to_mantain = input("Type the 3-letter code of the residue you want to save as REFERENCE FILE: ")
+        
+        if residue_to_mantain in non_standard_resids:
+            ligand_filename = save_non_standard_residue_ref_file(pdb_file, residue_to_mantain)
+            
+def save_non_standard_residue_ref_file(pdb_file, residue_to_mantain):
+    
+    pdb_directory = '/'.join(pdb_file.split('/')[:-1])
+    
+    ligand_filename = f'{pdb_directory}/reference_ligand.pdb'
+    
+    print(ligand_filename)
+    
+    # Get matching lines from from the pdb file 
+    with open(pdb_file, "r") as f1:
+        matching_lines = [line for line in f1 if residue_to_mantain in line]
+
+    with open(ligand_filename, "w") as ligand_file:
+        ligand_file.writelines(matching_lines)
+
+    print(f"Reference file for non-standard residue {residue_to_mantain} saved as: {ligand_filename}")
+
+def store_receptor_description(description, pdb_file):
+    
+    pdb_directory = '/'.join(pdb_file.split('/')[:-1])
+    
+    with open(f"{pdb_directory}/receptor_description.txt", "w") as f:
+        f.write(description)    
+    f.close()
+    
+def create_receptor_dlg_file(pdb_file, x_coord, y_coord, z_coord, x_points, y_points, z_points):
+    
+    pdb_directory = '/'.join(pdb_file.split('/')[:-1])
+    gpf_file = f"{pdb_directory}/receptor.gpf"
+    
+    with open(gpf_file, "w") as f:
+        f.write(f"npts {x_points} {y_points} {z_points} # num.grid points in xyz \n")
+        f.write("gridfld receptor.maps.fld # grid_data_file \n")
+        f.write("spacing 0.375  # spacing(A) \n")
+        f.write("receptor_types A C NA OA N SA HD  # receptor atom types \n")
+        f.write("ligand_types H A C NA OA N HD S SA F Cl Br # ligand atom types \n")
+        f.write("receptor receptor.pdbqt # macromolecule \n")
+        f.write(f"gridcenter {x_coord} {y_coord} {z_coord}  # xyz-coordinates or auto \n")
+        f.write("smooth 0.5  # store minimum energy w/in rad(A) \n")
+        f.write("map receptor.H.map # atom-specific affinity map \n")
+        f.write("map receptor.A.map # atom-specific affinity map \n")
+        f.write("map receptor.C.map # atom-specific affinity map \n")
+        f.write("map receptor.NA.map # atom-specific affinity map \n")
+        f.write("map receptor.OA.map # atom-specific affinity map \n")
+        f.write("map receptor.N.map # atom-specific affinity map \n")
+        f.write("map receptor.HD.map # atom-specific affinity map \n")
+        f.write("map receptor.S.map # atom-specific affinity map \n")
+        f.write("map receptor.SA.map # atom-specific affinity map \n")
+        f.write("map receptor.F.map # atom-specific affinity map \n")
+        f.write("map receptor.Cl.map # atom-specific affinity map \n")
+        f.write("map receptor.Br.map # atom-specific affinity map \n")
+        f.write("elecmap receptor.e.map # electrostatic potential map \n")
+        f.write("dsolvmap receptor.d.map  # desolvation potential map \n")
+        f.write("dielectric -0.1465  # <0, AD4 distance-dep.diel;>0, constant \n")
+    
+    
