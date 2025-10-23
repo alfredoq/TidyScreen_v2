@@ -7,6 +7,7 @@ from contextlib import redirect_stdout
 from tidyscreen.chemspace import cs_utils as cs_utils
 import os
 
+
 class MolDock:
     
     def __init__(self, project):
@@ -16,6 +17,7 @@ class MolDock:
         self.docking_params_path = self.project.proj_folders_path["docking"]["params"]    
         self.receptor_models_path = self.project.proj_folders_path["docking"]["receptors"]
         self.ligands_db = self.project.proj_folders_path["chemspace"]['processed_data'] + "/chemspace.db"
+        print("MolDock dimension activated.")
     
     def process_raw_pdb(self, pdb_file, clean_files=True):
 
@@ -58,11 +60,6 @@ class MolDock:
             mol2_file = moldock_utils.prepare_receptor_mol2_only_protein(output_file, clean_files)
             
             moldock_utils.prepare_pdqbt_file(mol2_file)
-            
-            
-
-
-
 
     def input_receptor(self,folder):
         """
@@ -141,4 +138,3 @@ class MolDock:
         # Create the docking script
         
         moldock_utils.create_docking_executable(assay_folder,custom_parameter_string)
-        
