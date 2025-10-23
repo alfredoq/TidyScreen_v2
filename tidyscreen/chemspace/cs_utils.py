@@ -1002,8 +1002,6 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
             # Compute the bbc-ml charges using the precomputed bbc-ml model - Alternative with timeout
             charge_array = general_functions.timeout_function(compute_bbc_ml_array,(row["SMILES"],row["inchi_key"],temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'compute_bbc_ml_array' computation"])
             
-            print(charge_array)
-            
             # Compute the charge using a fake 'gas' model to be replaced computing SYBYL atom types - Alternative with timeout
             sybyl_mol2_output_file, sybyl_output_tar_file = general_functions.timeout_function(sybyl_mol2_from_pdb,(row["inchi_key"],"gas",temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'sybyl_mol2_from_pdb' computation"])
             
@@ -1126,32 +1124,34 @@ def pdbqt_from_mol2(mol2_file, temp_dir, pdbqt_method):
     # Load the corresponding .mol2 file 
     file_prefix = mol2_file.split('/')[-1].replace('_sybyl.mol2','')
     
-    try:
-        mol = Chem.MolFromMol2File(mol2_file,removeHs=False)
-    except:
-        print(mol2_file)
-    
-    atoms_dict = create_meeko_atoms_dict()
     
     if pdbqt_method == "meeko":
+        pdbqt_outfile = f'{temp_dir}/{file_prefix}_tmp.pdbqt'
+        atoms_dict = create_meeko_atoms_dict()
         mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="gasteiger", add_atom_types=atoms_dict)
+        create_meeko_pdbqt_string(mol2_file, pdbqt_outfile, mk_prep)
+        apply_rename = 1
+        
+    elif pdbqt_method == "prepare_ligand_script":
+        try:
+            pdbqt_outfile = f'{temp_dir}/{file_prefix}.pdbqt'
+            execute_prep_ligand_script(mol2_file, pdbqt_outfile, temp_dir)
+            apply_rename = 0
+            renamed_pdbqt_file = pdbqt_outfile
+        
+        except Exception as error:
+            print(error)
     else:
+        pdbqt_outfile = f'{temp_dir}/{file_prefix}_tmp.pdbqt'
+        atoms_dict = create_meeko_atoms_dict()
         mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="read", charge_atom_prop="_TriposPartialCharge",add_atom_types=atoms_dict)
+        create_meeko_pdbqt_string(mol2_file, pdbqt_outfile, mk_prep)
+        apply_rename = 1
     
-    mol_setup_list = mk_prep(mol)
-    molsetup = mol_setup_list[0]
-
-    pdbqt_string = PDBQTWriterLegacy.write_string(molsetup)
-    
-    #pdbqt_outfile = f'/tmp/{file_prefix}/{file_prefix}_tmp.pdbqt'
-    pdbqt_outfile = f'{temp_dir}/{file_prefix}_tmp.pdbqt'
-    
-    with open(pdbqt_outfile,'w') as pdbqt_file:
-        pdbqt_file.write(pdbqt_string[0])
-
-    # In this section, .pdbqt atoms will be renamed to match the original .mol2 file
-    atom_names, atom_ref_coords = get_atom_names_from_mol2(mol2_file)
-    renamed_pdbqt_file = rename_pdbqt_file(pdbqt_outfile,atom_names, atom_ref_coords,file_prefix, temp_dir)
+    if apply_rename == 1:
+        # In this section, .pdbqt atoms will be renamed to match the original .mol2 file
+        atom_names, atom_ref_coords = get_atom_names_from_mol2(mol2_file)
+        renamed_pdbqt_file = rename_pdbqt_file(pdbqt_outfile,atom_names, atom_ref_coords,file_prefix, temp_dir)
 
     tar_pdbqt_file = generate_tar_file(renamed_pdbqt_file)
     
@@ -2194,3 +2194,34 @@ def round_floats_applymap(df, decimals=2):
         return x
     
     return df.applymap(round_if_float)
+
+def execute_prep_ligand_script(mol2_file, pdbqt_outfile, temp_dir):
+    
+    # Compute .mol2 file
+    prep_ligand_path = shutil.which('prepare_ligand4.py')
+    
+    try: 
+        # Use the prepare_ligand4.py script from AutoDockTools to generate the pdbqt file
+        prepare_ligand_command = f' cd {temp_dir} && {prep_ligand_path} -l {mol2_file} -o {pdbqt_outfile}' 
+        #convention is used for compatibility with RDKit
+        subprocess.run(prepare_ligand_command, shell=True, capture_output=True, text=True)
+    except Exception as error:
+        print("Error executing prepare_ligand4.py script")
+        print(error)
+    
+def create_meeko_pdbqt_string(mol2_file, pdbqt_outfile, mk_prep):
+    try:
+        mol = Chem.MolFromMol2File(mol2_file,removeHs=False)
+    except:
+        print(mol2_file)
+    
+    mol_setup_list = mk_prep(mol)
+    molsetup = mol_setup_list[0]
+
+    pdbqt_string = PDBQTWriterLegacy.write_string(molsetup)
+    
+    with open(pdbqt_outfile,'w') as pdbqt_file:
+        pdbqt_file.write(pdbqt_string[0])
+        
+    
+    

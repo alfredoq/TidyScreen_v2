@@ -85,13 +85,13 @@ class ChemSpace:
         
         print(f"Successfully depicted ligands in table: '{output_path}'")
 
-    def generate_mols_in_table(self,table_name,charge="bcc-ml",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10,delete_temp_dir=1,delete_nulls=1, pdbqt_method="third_party"):
+    def generate_mols_in_table(self,table_name,charge="gas",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10,delete_temp_dir=1,delete_nulls=1, pdbqt_method="meeko"):
         """
         Will generate the molecular files for all ligands in a given table. These molecular files will be stored as blobs in the corresponding table and further used for docking and MD simulations.
 
         Args:
             table_name (str): Name of the table to be processed
-            charge (str): Type of charge to be used for the mol2 file generation. Default is "bcc-ml". Other options are "gas" and "bcc" (this last one will take a long time to compute).
+            charge (str): Type of charge to be used for the mol2 file generation. Default is "gas". Other options are "bcc-ml" and "bcc" (this last one will take a long time to compute).
             pdb (int): If 1, will generate the .pdb files. Default is 1.
             mol2 (int): If 1, will generate the .mol2 files. Default is 1.
             pdbqt (int): If 1, will generate the .pdbqt files. Default is 1.
@@ -99,7 +99,7 @@ class ChemSpace:
             timeout (int): Timeout in seconds for the .pdb file generation. Default is 10 seconds.
             delete_temp_dir (int): If 1, will delete the temporary directory used for the file generation. Default is 1.
             delete_nulls (int): If 1, will delete all rows in the target table in which any file computation may have failed. Default is 1.
-            pdbqt_method (str): Method to be used for the .pdbqt file generation. Default is "tird_party". Other option is "meeko", which works specifically for gasteiger ('gas') charges.
+            pdbqt_method (str): Method to be used for the .pdbqt file generation. Default behavior uses "meeko", which works specifically for gasteiger. Other option is "third-party" (works with 'bcc-ml' and 'bcc' charges) and "prepare_ligand_script" (will apply 'gas' charges using ADT custom script).
         Returns:
             None
         """
