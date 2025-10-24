@@ -85,13 +85,13 @@ class ChemSpace:
         
         print(f"Successfully depicted ligands in table: '{output_path}'")
 
-    def generate_mols_in_table(self,table_name,charge="gas",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10,delete_temp_dir=1,delete_nulls=1, pdbqt_method="meeko"):
+    def generate_mols_in_table(self,table_name,charge_method="gas",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10,delete_temp_dir=1,delete_nulls=1, pdbqt_method="meeko"):
         """
         Will generate the molecular files for all ligands in a given table. These molecular files will be stored as blobs in the corresponding table and further used for docking and MD simulations.
 
         Args:
             table_name (str): Name of the table to be processed
-            charge (str): Type of charge to be used for the mol2 file generation. Default is "gas". Other options are "bcc-ml" and "bcc" (this last one will take a long time to compute).
+            charge_method (str): Type of charge to be used for the mol2 file generation. Default is "gas". Other options are "bcc-ml" and "bcc" (this last one will take a long time to compute).
             pdb (int): If 1, will generate the .pdb files. Default is 1.
             mol2 (int): If 1, will generate the .mol2 files. Default is 1.
             pdbqt (int): If 1, will generate the .pdbqt files. Default is 1.
@@ -138,7 +138,7 @@ class ChemSpace:
             atom_types_dict = f"{self.env_path}/chemspace/sybyl_to_gaff_at_dict.pkl"
             # Compute and store the sybyl mol2 files using pandarallel
             pandarallel.initialize(progress_bar=True) # Activate Progress Bar
-            df.parallel_apply(lambda row: cs_utils.compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict), axis=1)
+            df.parallel_apply(lambda row: cs_utils.compute_and_store_mol2(row,db,table_name,charge_method,temp_dir,atom_types_dict,pdbqt_method), axis=1)
             
             if delete_nulls == 1:
                 ## Purge the rows in which the .mol2 computation may have failed
@@ -146,12 +146,9 @@ class ChemSpace:
                 general_functions.delete_nulls_table(db,table_name,"mol2_file_gaff")
         
         if pdbqt == 1:
-            if charge != "gas" and pdbqt_method == "meeko":
-                print("WARNING: When using 'meeko' for .pdbqt generation, it is required to use 'gas' charges for better results. Stopping")
-                sys.exit(1)
             
             print("Computing .pdbqt files for ligands")
-            df.parallel_apply(lambda row: cs_utils.compute_and_store_pdbqt(row, db, table_name, temp_dir, pdbqt_method), axis=1)
+            df.parallel_apply(lambda row: cs_utils.compute_and_store_pdbqt(row, db, table_name, temp_dir, pdbqt_method, charge_method), axis=1)
             
             if delete_nulls == 1:
                 # Purge the rows in which the .pdbqt computation may have failed

@@ -968,7 +968,7 @@ def compute_and_store_pdb_safetime(row,db,table_name,temp_dir):
 def timeout_compute_and_store_pdb(row,db,table_name,temp_dir):
     return general_functions.timeout_function(compute_and_store_pdb_2,args=(row,db,table_name,temp_dir),timeout=10,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdb_from_smiles' computation"])
 
-def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
+def compute_and_store_mol2(row,db,table_name,charge_method,temp_dir,atom_types_dict,pdbqt_method):
     try: 
         if charge != "bcc-ml":
             # Compute and store in the db the sybyl type mol2
@@ -993,7 +993,9 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
             store_file_as_blob_with_retry(db,table_name,'frcmod_file',output_tar_frcmod,row)
             
             # Store the charge model used
-            store_string_in_column(db,table_name,"charge_model",charge,row)
+            charge_model_description = f"{pdbqt_method}: {charge_method}"
+            #store_string_in_column(db,table_name,"charge_model",charge,row)
+            store_string_in_column(db,table_name,"charge_model",charge_model_description,row)
         
         elif charge == "bcc-ml":
             # Compute the bbc-ml charges using the precomputed bbc-ml model
@@ -1096,7 +1098,6 @@ def sybyl_mol2_from_pdb_file(pdb_file):
         print(error)
         print("ERRROR")
     
-    
 def compute_charge_from_pdb(pdb_file):
     mol = Chem.MolFromPDBFile(pdb_file, removeHs=False) 
     
@@ -1122,13 +1123,13 @@ def rename_sybyl_to_gaff_mol2(row,db,table_name,temp_dir,atom_types_dict):
     
     return mol2_gaff_file, output_tar_file
     
-def compute_and_store_pdbqt(row, db, table_name, temp_dir, pdbqt_method):
+def compute_and_store_pdbqt(row, db, table_name, temp_dir, pdbqt_method, charge_method):
     try:
         
         # Prepare and store the corresponding .pdbqt file - Alternative with timeout
         mol2_file = f"{temp_dir}/{row['inchi_key']}_sybyl.mol2"
         
-        tar_pdbqt_file = pdbqt_from_mol2(mol2_file, temp_dir, pdbqt_method)
+        tar_pdbqt_file = pdbqt_from_mol2(mol2_file, temp_dir, pdbqt_method, charge_method)
         
         # Prepare and store the corresponding .pdbqt file
         store_file_as_blob(db,table_name,'pdbqt_file',tar_pdbqt_file,row)
@@ -1140,15 +1141,17 @@ def compute_and_store_pdbqt(row, db, table_name, temp_dir, pdbqt_method):
         fail_message = f"Failed at .pdbqt molecule computation step - Mol id: {row['id']}"
         general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)    
 
-def pdbqt_from_mol2(mol2_file, temp_dir, pdbqt_method):
+def pdbqt_from_mol2(mol2_file, temp_dir, pdbqt_method, charge_method):
     # Load the corresponding .mol2 file 
     file_prefix = mol2_file.split('/')[-1].replace('_sybyl.mol2','')
-    
     
     if pdbqt_method == "meeko":
         pdbqt_outfile = f'{temp_dir}/{file_prefix}_tmp.pdbqt'
         atoms_dict = create_meeko_atoms_dict()
-        mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="gasteiger", add_atom_types=atoms_dict)
+        if charge_method == "gas":
+            mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="gasteiger", add_atom_types=atoms_dict)
+        elif charge_method == "bcc-ml":
+            mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="espaloma", add_atom_types=atoms_dict)
         create_meeko_pdbqt_string(mol2_file, pdbqt_outfile, mk_prep)
         apply_rename = 1
         
