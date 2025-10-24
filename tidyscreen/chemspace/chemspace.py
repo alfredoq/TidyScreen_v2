@@ -85,7 +85,7 @@ class ChemSpace:
         
         print(f"Successfully depicted ligands in table: '{output_path}'")
 
-    def generate_mols_in_table(self,table_name,charge_method="gas",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10,delete_temp_dir=1,delete_nulls=1, pdbqt_method="meeko"):
+    def generate_mols_in_table(self,table_name,charge_method="gas",pdb=1,mol2=1,pdbqt=1,conf_rank=0,timeout=10,delete_temp_dir=1,delete_nulls=1, pdbqt_method="prepare_ligand_script"):
         """
         Will generate the molecular files for all ligands in a given table. These molecular files will be stored as blobs in the corresponding table and further used for docking and MD simulations.
 
