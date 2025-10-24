@@ -32,6 +32,8 @@ setup(name='tidyscreen',
 	'prolif',
 	'moldf',
 	'biobb_amber',
+  'espaloma',
+  'importlib_resources'
       ],
       packages=find_packages(),
       keywords='drug-discovery',
