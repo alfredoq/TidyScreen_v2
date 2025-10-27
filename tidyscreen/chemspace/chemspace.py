@@ -103,6 +103,11 @@ class ChemSpace:
         Returns:
             None
         """
+        
+        # Check if the charge method is valid
+        cs_utils.check_charges_method(charge_method, pdbqt_method)
+            
+        
         # Define the target database (i.e. chemspace)
         db = f"{self.cs_db_path}/chemspace.db"
         # Create the list of columns to create
@@ -148,6 +153,7 @@ class ChemSpace:
         if pdbqt == 1:
             
             print("Computing .pdbqt files for ligands")
+            
             df.parallel_apply(lambda row: cs_utils.compute_and_store_pdbqt(row, db, table_name, temp_dir, pdbqt_method, charge_method), axis=1)
             
             if delete_nulls == 1:
