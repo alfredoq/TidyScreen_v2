@@ -453,8 +453,12 @@ def reinsert_non_standard_residue(receptor_output_temp_file, receptor_output_fil
     with open(receptor_output_temp_file, "r") as f1:
         matching_lines = [line for line in f1 if residue_to_mantain in line]
 
+    print(matching_lines)
+
     receptor_file = receptor_output_file.split('/')[-1]
     ligand_filename = receptor_output_file.replace(receptor_file,'ligand.pdb')
+    
+    print(ligand_filename)
     
     with open(ligand_filename, "a") as ligand_file:
         ligand_file.writelines(matching_lines)
@@ -464,6 +468,8 @@ def reinsert_non_standard_residue(receptor_output_temp_file, receptor_output_fil
         f2.write("TER\n")
         f2.writelines(matching_lines)
         f2.write("TER\n")
+
+    print(receptor_output_file)
 
     return ligand_filename
 
@@ -595,9 +601,7 @@ def prepare_receptor_mol2_only_protein(pdb_file, clean_files):
         if search_string in content:
             print("ATTENTION: check alternate residue conformations. Mantaining the first one.")
         else:
-            print("String not found in file.")
-        
-    
+            pass
             
     ### Prepare an Amber-like .mol2 file
     with open(f"{file_path}/cpptraj.in", "w") as f:
@@ -763,7 +767,7 @@ def manage_non_standard_residues(pdb_file, non_standard_resids, output_file, cle
                 
         if residue_to_mantain in non_standard_resids:
             ligand_filename = reinsert_non_standard_residue(pdb_file, output_file, residue_to_mantain)
-                    
+            print("LOOOOO")
             print(f"The non-standard residue {residue_to_mantain} has been reinserted in the processed pdb file.")
         else:
 
@@ -775,7 +779,6 @@ def manage_non_standard_residues(pdb_file, non_standard_resids, output_file, cle
         mol2_file = prepare_receptor_mol2_only_protein(output_file, clean_files)
                 
         prepare_pdqbt_file(mol2_file)
-    
     
 def create_non_standard_ref_file(pdb_file, non_standard_resids, output_file, clean_files):
     
@@ -842,4 +845,13 @@ def create_receptor_dlg_file(pdb_file, x_coord, y_coord, z_coord, x_points, y_po
         f.write("dsolvmap receptor.d.map  # desolvation potential map \n")
         f.write("dielectric -0.1465  # <0, AD4 distance-dep.diel;>0, constant \n")
     
+def check_non_standard_residues_in_pdb(resid):
     
+    protein_residues = ['ACE','ALA','ARG','ASH','ASN','ASP','CALA','CARG','CASN','CASP','CCYS','CCYX','CGLN','CGLU','CGLY','CHID','CHIE','CHIP','CHIS','CHYP','CILE','CLEU','CLYS','CMET','CPHE','CPRO','CSER','CTHR','CTRP','CTYR','CVAL','CYM','CYS','CYX','GLH','GLN','GLU','GLY','HID','HIE','HIP','HIS','HYP','ILE','LEU','LYN','LYS','MET','NALA','NARG','NASN','NASP','NCYS','NCYX','NGLN','NGLU','NGLY','NHE','NHID','NHIE','NHIP','NHIS','NILE','NLEU','NLYS','NME','NMET','NPHE','NPRO','NSER','NTHR','NTRP','NTYR','NVAL','PHE','PRO','SER','THR','TRP','TYR','VAL']
+    
+    if resid in protein_residues:
+        return 0
+    else:
+        return 1
+            
+            

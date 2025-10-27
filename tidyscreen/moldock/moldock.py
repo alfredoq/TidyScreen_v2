@@ -48,23 +48,39 @@ class MolDock:
         
         chains = moldock_utils.check_pdb_file_chains(pdb_file)
 
+        print(f"Chains found in the pdb file: {chains}")
+
         # If there are multiple chains, inform the user and ask which chain to keep
         if len(chains) > 1:
             pdb_file = moldock_utils.process_multichain_pdb_file(pdb_file, chains)
-
+        
         output_file = moldock_utils.check_pdb_file_resnumbers(pdb_file)
-
+        
         output_info = moldock_utils.process_pdb_with_pdb4amber(pdb_file) 
 
         non_standard_resids = moldock_utils.get_non_standard_residues(output_info)
-        
+
         if len(non_standard_resids) > 0:
-            
-            # Query if a non-standard residue is to be kept as part of the receptor
-            moldock_utils.manage_non_standard_residues(pdb_file, non_standard_resids, output_file, clean_files)
             
             # Query if any non-standard residue is to be kept as a reference file
             moldock_utils.create_non_standard_ref_file(pdb_file, non_standard_resids, output_file, clean_files)
+            
+            for resid in non_standard_resids:
+            
+                # Check if the non-standard residues belong to a protein residue or are ligands/ions/water molecules
+                #moldock_utils.check_non_standard_residues_in_pdb(non_standard_resids)
+                non_protein = moldock_utils.check_non_standard_residues_in_pdb(resid)
+                
+                if non_protein == 1:
+                
+                    # Query if a non-standard residue is to be kept as part of the receptor
+                    moldock_utils.manage_non_standard_residues(pdb_file, non_standard_resids, output_file, clean_files)
+             
+            mol2_file = moldock_utils.prepare_receptor_mol2_only_protein(output_file, clean_files)
+            
+            moldock_utils.prepare_pdqbt_file(mol2_file)
+                
+            
             
         else:
             
