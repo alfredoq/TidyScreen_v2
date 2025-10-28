@@ -213,8 +213,8 @@ class DockingAnalysis:
                     parameter = ''
                 break
         
-        docking_analysis_utils.save_prolif_parameters_set(prolif_parameters_db, parameter, values_dict,comment, results_table_name=results_table_name)
-        
+        #docking_analysis_utils.save_prolif_parameters_set(prolif_parameters_db, parameter, values_dict,comment, results_table_name=results_table_name)
+        docking_analysis_utils.save_prolif_parameters_set(prolif_parameters_db, parameter, values_dict,comment)
         
     def restore_fingerprints_results_to_db(self, assay_id, mmgbsa=1, prolif=1, clean_files=0, clean_folder=0, stored_docked_poses=1, clean_assay_folder=1, prolif_parameters_set=1, results_table_name="Results"):
         

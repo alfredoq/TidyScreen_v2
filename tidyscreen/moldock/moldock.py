@@ -53,6 +53,7 @@ class MolDock:
         # If there are multiple chains, inform the user and ask which chain to keep
         if len(chains) > 1:
             pdb_file = moldock_utils.process_multichain_pdb_file(pdb_file, chains)
+            
         
         output_file = moldock_utils.check_pdb_file_resnumbers(pdb_file)
         
@@ -75,6 +76,7 @@ class MolDock:
                 
                     # Query if a non-standard residue is to be kept as part of the receptor
                     moldock_utils.manage_non_standard_residues(pdb_file, non_standard_resids, output_file, clean_files)
+            
              
             mol2_file = moldock_utils.prepare_receptor_mol2_only_protein(output_file, clean_files)
             

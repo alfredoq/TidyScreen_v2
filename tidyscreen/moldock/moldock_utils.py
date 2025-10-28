@@ -567,6 +567,7 @@ def prepare_receptor_mol2_only_protein(pdb_file, clean_files):
     with open(f"{file_path}/tleap1.in", "w") as f:
         f.write(f"source leaprc.protein.ff14SB\n")
         f.write(f"receptor = loadpdb {pdb_file}\n")
+        f.write(f"savepdb receptor {file_path}/receptor.pdb\n")
         f.write(f"saveamberparm receptor {file_path}/receptor.prmtop {file_path}/receptor.inpcrd\n")
         f.write(f"quit\n")
     
@@ -747,6 +748,7 @@ def clean_receptor_dir(pdb_file):
     temp_files = glob(f"{pdb_directory}/*")
     
     files_to_retain = [f"{pdb_directory}/receptor.mol2",
+                       f"{pdb_directory}/receptor.pdb",
                        f"{pdb_directory}/receptor.pdbqt",
                        f"{pdb_directory}/reference_ligand.pdb",
                        f"{pdb_directory}/receptor.gpf",
@@ -767,7 +769,6 @@ def manage_non_standard_residues(pdb_file, non_standard_resids, output_file, cle
                 
         if residue_to_mantain in non_standard_resids:
             ligand_filename = reinsert_non_standard_residue(pdb_file, output_file, residue_to_mantain)
-            print("LOOOOO")
             print(f"The non-standard residue {residue_to_mantain} has been reinserted in the processed pdb file.")
         else:
 
