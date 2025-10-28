@@ -227,6 +227,9 @@ def parse_dlg_by_run_number(ligname,dlg_file,run_number,output_path):
     
     output_filename = f'{output_path}/{ligname}_{run_number}.pdb'
     trigger = 0
+    
+    ligand_pdb_lines_marker = ['ATOM', 'HETATM']
+    
     with open(dlg_file,'r') as dlg_file, open(output_filename,'w') as output_file:
         for line in dlg_file:
             new_line = line.rsplit()
@@ -236,7 +239,7 @@ def parse_dlg_by_run_number(ligname,dlg_file,run_number,output_path):
             if len(new_line) == 2 and new_line[1] == 'ENDMDL' and trigger == 1:
                 trigger = 0
 
-            if trigger == 1 and len(new_line) > 5 and new_line[1] == 'ATOM':
+            if trigger == 1 and len(new_line) > 5 and new_line[1] in ligand_pdb_lines_marker:
                 atom_field = "HETATM"
                 pdb_string = f"{atom_field:<6}{new_line[2]:>5}{'':<1}{new_line[3]:>4}{'':<1}{new_line[4]:>3}{'':<2}{new_line[5]:>4}{'':<4}{new_line[6]:>8}{new_line[7]:>8}{new_line[8]:>8}"
                 output_file.write(f"{pdb_string}\n")
