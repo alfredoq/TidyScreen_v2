@@ -32,7 +32,8 @@ setup(name='tidyscreen',
 	'prolif',
 	'moldf',
 	'biobb_amber',
-	'importlib_resources'
+	'importlib_resources',
+        'py3Dmol'
       ],
       packages=find_packages(),
       keywords='drug-discovery',
