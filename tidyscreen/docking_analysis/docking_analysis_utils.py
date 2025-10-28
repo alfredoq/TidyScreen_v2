@@ -129,6 +129,7 @@ def extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses,vmd_path):
             trigger_2 = 0
             activation_keywords_2 =  ['DOCKED:', 'USER', 'Run', '=', pose_id] # This is the opening line of the .pdbqt run to extract
             shutdown_keywords_2 = ['DOCKED:', 'ENDMDL']
+            ligand_lines_marker = ['ATOM', 'HETATM']
             with open(output_file,'w') as pdb_output:
                 for line in open(dlg_file_to_parse):
                     new_line = line.rsplit()
@@ -137,7 +138,7 @@ def extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses,vmd_path):
                     elif new_line == shutdown_keywords_2:
                         trigger_2 = 0
         
-                    if trigger_2 == 1 and new_line[1] == 'ATOM': # This extract the lines constituting the .pdb file
+                    if trigger_2 == 1 and new_line[1] in ligand_lines_marker: # This extract the lines constituting the .pdb file
                         # This will output the .pdb file with the corresponding format
                         #pdb_output.write(f"{new_line[1]}{new_line[2]:>7}{'':<2}{new_line[3]:<4}{new_line[4]:<8}{new_line[5]:<7}{new_line[6]:<8}{new_line[7]:<8}{new_line[8]:<8}\n")
                         atom_field = "HETATM"

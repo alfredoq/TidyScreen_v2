@@ -1113,9 +1113,12 @@ def pdbqt_from_mol2(mol2_file, temp_dir, pdbqt_method, charge_method):
         apply_rename = 1
         
     elif pdbqt_method == "prepare_ligand_script":
+        # prepare_ligand will use the .pdb file, so we need to convert first the .mol2 into .pdb
+        pdf_file = mol2_file.replace("_sybyl.mol2",".pdb")
         try:
             pdbqt_outfile = f'{temp_dir}/{file_prefix}.pdbqt'
-            execute_prep_ligand_script_pdbqt(mol2_file, pdbqt_outfile, temp_dir)
+            #execute_prep_ligand_script_pdbqt(mol2_file, pdbqt_outfile, temp_dir)
+            execute_prep_ligand_script_pdbqt(pdf_file, pdbqt_outfile, temp_dir)
             apply_rename = 0
             renamed_pdbqt_file = pdbqt_outfile
         
