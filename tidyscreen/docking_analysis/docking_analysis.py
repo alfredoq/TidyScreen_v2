@@ -13,22 +13,15 @@ import os
 
 class DockingAnalysis:
     
-    def __init__(self, project,amberhome=None):
+    def __init__(self, project):
         self.project = project
         self.docking_assays_path = self.project.proj_folders_path["docking"]["docking_assays"]
         self.docking_registers_path = self.project.proj_folders_path["docking"]["docking_registers"]    
         self.docking_params_path = self.project.proj_folders_path["docking"]["params"]    
         self.receptor_models_path = self.project.proj_folders_path["docking"]["receptors"]
         self.ligands_db = self.project.proj_folders_path["chemspace"]['processed_data'] + "/chemspace.db"
+        self.amberhome = os.environ.get('CONDA_PREFIX')
 
-        if amberhome is None:
-            self.amberhome = input("Please, input the AMBERHOME path: ")
-            if self.amberhome is None:
-                print("Error: AMBERHOME environment variable is not set.")
-                sys.exit()
-        else:
-            self.amberhome = amberhome
-    
     def process_docking_assay(self, assay_id, max_poses=10, vmd_path=None, extract_poses=0):
         registries_db = f"{self.docking_registers_path}/docking_registries.db"
         # Check if the 'assay_id' existis in docking registries
@@ -142,7 +135,7 @@ class DockingAnalysis:
     ### Store the docked pose in the results database if required
         if store_docked_poses == 1:
             docking_analysis_utils.store_docked_pose_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,pose_pdb_file)
-        
+    
     ### Delete intermediate files after all calculations if required ###
         
         if clean_files == 1:
@@ -162,6 +155,14 @@ class DockingAnalysis:
         assay_folder = self.docking_assays_path + f'/assay_{assay_id}'
         assay_results_db = f"{assay_folder}/assay_{assay_id}.db"
         
+        if mmgbsa == 1:
+            # Check of the output fingerprints tables exists, and in that case delete them
+            docking_analysis_utils.check_and_delete_existing_fingerprints_tables(assay_results_db, "mmgbsa_fingerprints")
+            
+        if prolif == 1:
+            # Check of the output fingerprints tables exists, and in that case delete them
+            docking_analysis_utils.check_and_delete_existing_fingerprints_tables(assay_results_db, "prolif_fingerprints")
+        
         # Set the main fingerprints folder
         main_fingerprints_folder = f"{assay_folder}/fingerprints_analyses_{results_table_name}"
         
@@ -175,14 +176,6 @@ class DockingAnalysis:
             
             # Add to iteration counter
             iteration += 1
-
-        if mmgbsa == 1:
-            ## Sort the 'mmgbsa_fingerprints' table based on Pose_ID
-            general_functions.sort_table(assay_folder,assay_id,"mmgbsa_fingerprints","Pose_ID")
-            
-        if prolif == 1:
-            ## Sort the 'prolif_fingerprints' table based on Pose_ID
-            general_functions.sort_table(assay_folder,assay_id,"prolif_fingerprints","Pose_ID")
 
         ## Delete the general fingerprint folders if required
         if clean_assay_folder == 1:
@@ -213,8 +206,8 @@ class DockingAnalysis:
                     parameter = ''
                 break
         
-        docking_analysis_utils.save_prolif_parameters_set(prolif_parameters_db, parameter, values_dict,comment, results_table_name=results_table_name)
-        
+        #docking_analysis_utils.save_prolif_parameters_set(prolif_parameters_db, parameter, values_dict,comment, results_table_name=results_table_name)
+        docking_analysis_utils.save_prolif_parameters_set(prolif_parameters_db, parameter, values_dict,comment)
         
     def restore_fingerprints_results_to_db(self, assay_id, mmgbsa=1, prolif=1, clean_files=0, clean_folder=0, stored_docked_poses=1, clean_assay_folder=1, prolif_parameters_set=1, results_table_name="Results"):
         

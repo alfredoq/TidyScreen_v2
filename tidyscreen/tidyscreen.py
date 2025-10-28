@@ -83,6 +83,18 @@ def get_project_local_path(proj_name):
             return row[1] # Return the project path
 
 def create_project(path, proj_name):
+    """
+    Will create a new project with the specified name at the specified path. The corresponding folder structure will be created and the project will be registered in the main database.
+    Args:
+        path (str): Full path where the project will be created.
+        proj_name (str): Name of the project to create.
+    Returns:
+        None    
+    Example::
+        >>> from tidyscreen import tidyscreen as ts
+        >>> ts.create_project("/$HOME/Desktop","sample_project")  
+    """
+    
     ### Will create a project and associated file structure
     rows = projects(print_output = 0)
     # Check the existence of the project to delete
@@ -100,8 +112,11 @@ def create_project(path, proj_name):
 
 def import_project():
     """
-    Will import an existing project into the main database.
-    The project folder structure will be checked prior to import.
+    Will import an existing project into the main database. The project folder structure will be checked prior to import. The corresponding project path and description will be requested.
+    Args:
+        None
+    Returns:
+        None    
     Example::
         >>> from tidyscreen import tidyscreen as ts
         >>> ts.import_project()

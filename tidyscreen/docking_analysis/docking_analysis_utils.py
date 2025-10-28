@@ -16,7 +16,7 @@ from tidyscreen.GeneralFunctions import general_functions as general_functions
 import json
 import tempfile
 import subprocess
-
+import sqlite3
 
 def check_docking_assay(registries_db,assay_id):
     # Check if the 'assay_id' exists in the registers database
@@ -129,6 +129,7 @@ def extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses,vmd_path):
             trigger_2 = 0
             activation_keywords_2 =  ['DOCKED:', 'USER', 'Run', '=', pose_id] # This is the opening line of the .pdbqt run to extract
             shutdown_keywords_2 = ['DOCKED:', 'ENDMDL']
+            ligand_lines_marker = ['ATOM', 'HETATM']
             with open(output_file,'w') as pdb_output:
                 for line in open(dlg_file_to_parse):
                     new_line = line.rsplit()
@@ -137,7 +138,7 @@ def extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses,vmd_path):
                     elif new_line == shutdown_keywords_2:
                         trigger_2 = 0
         
-                    if trigger_2 == 1 and new_line[1] == 'ATOM': # This extract the lines constituting the .pdb file
+                    if trigger_2 == 1 and new_line[1] in ligand_lines_marker: # This extract the lines constituting the .pdb file
                         # This will output the .pdb file with the corresponding format
                         #pdb_output.write(f"{new_line[1]}{new_line[2]:>7}{'':<2}{new_line[3]:<4}{new_line[4]:<8}{new_line[5]:<7}{new_line[6]:<8}{new_line[7]:<8}{new_line[8]:<8}\n")
                         atom_field = "HETATM"
@@ -199,7 +200,6 @@ def create_fingerprints_analysis_folder(self,assay_folder,assay_id,results_pose_
     
     return complex_pdb_file, output_path, receptor_filename, ligname, sub_pose, pose_pdb_file
 
-
 def retrieve_dlg_file(assay_folder,assay_id,results_pose_id, results_table_name):
     """
     This function will return the name of the .dlg file corresponding the provided 'results_pose_id', as well as the 'run_number' corresponding the 'pose_id'
@@ -227,6 +227,9 @@ def parse_dlg_by_run_number(ligname,dlg_file,run_number,output_path):
     
     output_filename = f'{output_path}/{ligname}_{run_number}.pdb'
     trigger = 0
+    
+    ligand_pdb_lines_marker = ['ATOM', 'HETATM']
+    
     with open(dlg_file,'r') as dlg_file, open(output_filename,'w') as output_file:
         for line in dlg_file:
             new_line = line.rsplit()
@@ -236,7 +239,7 @@ def parse_dlg_by_run_number(ligname,dlg_file,run_number,output_path):
             if len(new_line) == 2 and new_line[1] == 'ENDMDL' and trigger == 1:
                 trigger = 0
 
-            if trigger == 1 and len(new_line) > 5 and new_line[1] == 'ATOM':
+            if trigger == 1 and len(new_line) > 5 and new_line[1] in ligand_pdb_lines_marker:
                 atom_field = "HETATM"
                 pdb_string = f"{atom_field:<6}{new_line[2]:>5}{'':<1}{new_line[3]:>4}{'':<1}{new_line[4]:>3}{'':<2}{new_line[5]:>4}{'':<4}{new_line[6]:>8}{new_line[7]:>8}{new_line[8]:>8}"
                 output_file.write(f"{pdb_string}\n")
@@ -760,3 +763,17 @@ def check_parameters_dict_for_tuple(dict):
                         dict[key1][key2] = tuple(value2)
                         
     return dict
+
+def check_and_delete_existing_fingerprints_tables(assay_results_db, results_table_name):
+    
+    conn = sqlite3.connect(assay_results_db)
+    cursor = conn.cursor()
+    
+    # Delete table if it exists
+    cursor.execute(f"DROP TABLE IF EXISTS {results_table_name}")
+    conn.commit()
+    
+    # Delete table if it exists
+    cursor.execute(f"DROP TABLE IF EXISTS docked_poses")
+    conn.close()
+    

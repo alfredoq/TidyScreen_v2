@@ -17,6 +17,8 @@ import io
 import subprocess
 from meeko import MoleculePreparation
 from meeko import PDBQTWriterLegacy
+from meeko import RDKitMolCreate
+from meeko import PDBQTMolecule
 from rdkit.Chem.EnumerateStereoisomers import EnumerateStereoisomers, StereoEnumerationOptions
 from tidyscreen.GeneralFunctions import general_functions as general_functions
 import time
@@ -270,7 +272,6 @@ def save_df_to_db(db,df,table_name):
     except Exception as error:
         print(error)
 
-
 def list_ligands_tables(db):
     conn = tidyscreen.connect_to_db(db)
     cursor = conn.cursor()
@@ -452,7 +453,8 @@ def check_columns_existence_in_table(conn,table_name,columns_list):
         
     columns = [row[1] for row in cursor.fetchall()]
     # Return True if all items in 'columns_list' already exist as columns in 'table_name'
-    if all(item in columns for item in columns_list):
+    #if all(item in columns for item in columns_list):
+    if any(item in columns for item in columns_list):
         print(f"The columns: {columns_list} already exist in '{table_name}'.")
         response = input("Do you want to delete these columns and continue? (y/n): ")
         if response.lower() == 'y':
@@ -529,6 +531,8 @@ def pdb_from_smiles(smiles,inchi_key,dir,conf_rank):
         # Compute the net charge of the molecule for potential use in antechamber
         net_charge = compute_molecule_net_charge(mol)
         
+        print(pdb_file)
+        
         # Compress the pdb_file
         tar_pdb_file = generate_tar_file(pdb_file)
         
@@ -585,7 +589,7 @@ def mol2_from_pdb(pdb_file,net_charge,charge,at):
         
     return output_file, output_tar_file
 
-def gaff_mol2_from_pdb(inchi_key,charge,temp_dir):
+def gaff_mol2_from_pdb(inchi_key,charge_method,temp_dir):
     
     pdb_file = f"{temp_dir}/{inchi_key}.pdb"
     output_file = f"{temp_dir}/{inchi_key}_gaff.mol2"
@@ -597,7 +601,7 @@ def gaff_mol2_from_pdb(inchi_key,charge,temp_dir):
     # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
     antechamber_path = shutil.which('antechamber')
     try: 
-        antechamber_command = f'cd {antechamber_temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge} -nc {net_charge} -at gaff -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
+        antechamber_command = f'cd {antechamber_temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge_method} -nc {net_charge} -at gaff -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
         
         subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
 
@@ -629,36 +633,6 @@ def compute_frcmod_file(mol2_file,at):
     output_tar_file = generate_tar_file(output_file)
     
     return output_tar_file
-    
-def pdbqt_from_mol2(mol2_file):
-    # Load the corresponding .mol2 file 
-    file_prefix = mol2_file.split('/')[-1].replace('_sybyl.mol2','')
-    
-    try:
-        mol = Chem.MolFromMol2File(mol2_file,removeHs=False)
-    except:
-        print(mol2_file)
-    
-    atoms_dict = create_meeko_atoms_dict()
-    mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="read", charge_atom_prop="_TriposPartialCharge",add_atom_types=atoms_dict)
-    
-    mol_setup_list = mk_prep(mol)
-    molsetup = mol_setup_list[0]
-
-    pdbqt_string = PDBQTWriterLegacy.write_string(molsetup)
-    
-    pdbqt_outfile = f'/tmp/{file_prefix}/{file_prefix}_tmp.pdbqt'
-    with open(pdbqt_outfile,'w') as pdbqt_file:
-        pdbqt_file.write(pdbqt_string[0])
-
-    # In this section, .pdbqt atoms will be renamed to match the original .mol2 file
-
-    atom_names, atom_ref_coords = get_atom_names_from_mol2(mol2_file)
-    renamed_pdbqt_file = rename_pdbqt_file(pdbqt_outfile,atom_names, atom_ref_coords,file_prefix)
-
-    tar_pdbqt_file = generate_tar_file(renamed_pdbqt_file)
-    
-    return tar_pdbqt_file
 
 def store_file_as_blob(db,table_name,colname,file,row):
     conn = tidyscreen.connect_to_db(db)
@@ -668,28 +642,6 @@ def store_file_as_blob(db,table_name,colname,file,row):
     cursor.execute(f"UPDATE {table_name} SET {colname} = ? WHERE id = {id};",(file,))
     conn.commit()
     conn.close()
-
-def store_file_as_blob_with_retry(db,table_name,colname,file,row,max_retries=50):
-    
-    for attempt in range(max_retries):
-        try:
-            conn = tidyscreen.connect_to_db(db)
-            conn.execute('PRAGMA journal_mode=WAL;') # Enable WAL mode for better concurrency
-            cursor = conn.cursor()
-            id = row['id']
-            # Will store the '.pdb' file as a blob object into the database
-            cursor.execute(f"UPDATE {table_name} SET {colname} = ? WHERE id = {id};",(file,))
-            conn.commit()
-            conn.close()
-            break  # Exit the loop if successful
-        except sqlite3.OperationalError as e:
-            if "database is locked" in str(e):
-                time.sleep(5)
-            else:
-                raise
-            
-    else:
-        raise Exception("Failed to write after several retries.")
 
 def store_string_in_column(db,table_name,colname,string,row):
     conn = tidyscreen.connect_to_db(db)
@@ -755,33 +707,6 @@ def get_atom_names_from_mol2(mol2_file):
                 atom_ref_coord.append((x_coord,y_coord,z_coord)) # Construct a tuple containing the x,y,z coordinates
   
     return atom_names, atom_ref_coord
-
-def rename_pdbqt_file(target_pdqbt_file,atom_names, atom_ref_coords,file_prefix):
-    output_file = f"/tmp/{file_prefix}/{file_prefix}.pdbqt"
-    with open(target_pdqbt_file,'r') as readfile, open(output_file,'w') as writefile:
-        for line in readfile:
-            line_split = line.rstrip().split()
-            if line_split[0] == "ATOM":
-                # Construct a tuple containing (x,y,z) coordinates
-                x_coord = (round(float(line_split[5]),3))
-                y_coord = (round(float(line_split[6]),3))
-                z_coord = (round(float(line_split[7]),3))
-                coords_tuple = (x_coord,y_coord,z_coord)
-                if coords_tuple in atom_ref_coords:
-                    # Get the index of the corresponding coordinates tuple
-                    index = atom_ref_coords.index(coords_tuple)
-                    # Replace the atom name
-                    line_split[2] = atom_names[index]
-                    # Parse a new line be written to the renamed .pdbqt file
-                    column_widths = [9, 4, 4, 8, 6, 7, 8, 8, 6, 6, 10, 3]
-                    # Format the line in accordance to .pdbqt 
-                    formated_line = line_split[0].ljust(column_widths[0]) + line_split[1].ljust(column_widths[1]) + line_split[2].ljust(column_widths[2]) + line_split[3].ljust(column_widths[3]) + line_split[4].ljust(column_widths[4]) + line_split[5].rjust(column_widths[5]) + line_split[6].rjust(column_widths[6]) + line_split[7].rjust(column_widths[7]) + line_split[8].rjust(column_widths[8]) + line_split[9].rjust(column_widths[9]) + line_split[10].rjust(column_widths[10]) + " " + line_split[11].ljust(column_widths[11])
-                    # Write the formatted line to the output file
-                    writefile.write(f"{formated_line} \n")
-            else:
-                writefile.write(line)
-    
-    return output_file
 
 def create_meeko_atoms_dict():
     atoms_dict = [{"smarts": "[#1]", "atype": "H",},
@@ -1023,78 +948,38 @@ def compute_and_store_pdb_safetime(row,db,table_name,temp_dir):
 def timeout_compute_and_store_pdb(row,db,table_name,temp_dir):
     return general_functions.timeout_function(compute_and_store_pdb_2,args=(row,db,table_name,temp_dir),timeout=10,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdb_from_smiles' computation"])
 
-def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
+def compute_and_store_mol2(row,db,table_name,charge_method,temp_dir,atom_types_dict,pdbqt_method):
     try: 
-        if charge != "bcc-ml":
+        
+        if charge_method != "bcc-ml":
+            
             # Compute and store in the db the sybyl type mol2
-            sybyl_mol2_output_file, sybyl_output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],charge,temp_dir)
+            sybyl_mol2_output_file, sybyl_output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],charge_method,temp_dir)
             
             # Store the Sybyl like file
-            #store_file_as_blob(db,table_name,'mol2_file_sybyl',sybyl_output_tar_file,row)
             store_file_as_blob_with_retry(db,table_name,'mol2_file_sybyl',sybyl_output_tar_file,row)
             
             # Compute and store in the db the gaff type mol2
-            gaff_mol2_output_file, gaff_output_tar_file = gaff_mol2_from_pdb(row["inchi_key"],charge,temp_dir)
+            gaff_mol2_output_file, gaff_output_tar_file = gaff_mol2_from_pdb(row["inchi_key"],charge_method,temp_dir)
+            
             # Store the GAFF like file
             #store_file_as_blob(db,table_name,'mol2_file_gaff',gaff_output_tar_file,row)
             store_file_as_blob_with_retry(db,table_name,'mol2_file_gaff',gaff_output_tar_file,row)
+            
             # Compute the frcmod file
             output_tar_frcmod = compute_frcmod_file(gaff_mol2_output_file,at="gaff")
-            # Store the frcmod file
-            #store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
-            store_file_as_blob_with_retry(db,table_name,'frcmod_file',output_tar_frcmod,row)
-            # Store the charge model used
-            store_string_in_column(db,table_name,"charge_model",charge,row)
-        
-        elif charge == "bcc-ml":
-            # Compute the bbc-ml charges using the precomputed bbc-ml model
-            #charge_array = compute_bbc_ml_array(row["SMILES"],row["inchi_key"],temp_dir)
-            
-            # Compute the bbc-ml charges using the precomputed bbc-ml model - Alternative with timeout
-            charge_array = general_functions.timeout_function(compute_bbc_ml_array,(row["SMILES"],row["inchi_key"],temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'compute_bbc_ml_array' computation"])
-            
-            # Compute the charge using a fake 'gas' model to be replaced computing SYBYL atom types - Alternative with timeout
-            sybyl_mol2_output_file, sybyl_output_tar_file = general_functions.timeout_function(sybyl_mol2_from_pdb,(row["inchi_key"],"gas",temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'sybyl_mol2_from_pdb' computation"])
-            
-            # Compute the charge using a fake 'gas' model to be replaced computing SYBYL atom types
-            #sybyl_mol2_output_file, sybyl_output_tar_file = sybyl_mol2_from_pdb(row["inchi_key"],"gas",temp_dir)
-            
-            # Compute the charge using a fake 'gas' model to be replaced computing SYBYL atom types - Alternative with timeout
-            sybyl_mol2_output_file, sybyl_output_tar_file = general_functions.timeout_function(sybyl_mol2_from_pdb,(row["inchi_key"],"gas",temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'sybyl_mol2_from_pdb' computation"])
-    
-            # Replace the charges on the .mol2 files using the precomputed bbc-ml charges
-            sybyl_replaced_mol2_file = general_functions.replace_charge_on_mol2_file(sybyl_mol2_output_file,charge_array)
-
-            sybyl_new_tar_file = generate_tar_file(sybyl_replaced_mol2_file)
-            
-            # Store the Sybyl like file
-            #store_file_as_blob(db,table_name,'mol2_file_sybyl',sybyl_new_tar_file,row)
-            store_file_as_blob_with_retry(db,table_name,'mol2_file_sybyl',sybyl_new_tar_file,row)
-        
-            # Compute the charge using a fake 'gas' model to be replaced computing GAFF atom types
-            #gaff_mol2_output_file, gaff_output_tar_file = gaff_mol2_from_pdb(row["inchi_key"],"gas",temp_dir)
-            
-            # Compute the charge using a fake 'gas' model to be replaced computing GAFF atom types - Alternative with timeout
-            gaff_mol2_output_file, gaff_output_tar_file = general_functions.timeout_function(gaff_mol2_from_pdb,(row["inchi_key"],"gas",temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'gaff_mol2_from_pdb' computation"])
-            
-            # Replace the charges on the .mol2 files using the precomputed bbc-ml charges
-            gaff_replaced_mol2_file = general_functions.replace_charge_on_mol2_file(gaff_mol2_output_file,charge_array)
-            gaff_new_tar_file = generate_tar_file(gaff_replaced_mol2_file)
-            
-            # Store the GAFF like file
-            #store_file_as_blob(db,table_name,'mol2_file_gaff',gaff_new_tar_file,row)
-            store_file_as_blob_with_retry(db,table_name,'mol2_file_gaff',gaff_new_tar_file,row)
-            
-            # Compute the frcmod file
-            output_tar_frcmod = compute_frcmod_file(gaff_replaced_mol2_file,at="gaff")
             
             # Store the frcmod file
             #store_file_as_blob(db,table_name,'frcmod_file',output_tar_frcmod,row)
             store_file_as_blob_with_retry(db,table_name,'frcmod_file',output_tar_frcmod,row)
             
             # Store the charge model used
-            store_string_in_column(db,table_name,"charge_model",charge,row)
-            
+            charge_model_description = f"{pdbqt_method}: {charge_method}"
+            store_string_in_column(db,table_name,"charge_model",charge_model_description,row)
+        
+        elif charge_method == "bcc-ml": 
+            compute_bcc_ml_third_party(row,db,table_name,charge_method,temp_dir,atom_types_dict,pdbqt_method)
+                
         else:
             print(f"Charge system: '{charge}' unknown. Stopping...")
             sys.exit()
@@ -1104,7 +989,7 @@ def compute_and_store_mol2(row,db,table_name,charge,temp_dir,atom_types_dict):
         fail_message = f"Failed at .mol2 sybyl atom type computation step - Mol id: {row['id']}"
         general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)
 
-def sybyl_mol2_from_pdb(inchi_key,charge,temp_dir):
+def sybyl_mol2_from_pdb(inchi_key,charge_method,temp_dir):
     pdb_file = f"{temp_dir}/{inchi_key}.pdb"
     output_file = f"{temp_dir}/{inchi_key}_sybyl.mol2"
     # Since Antechamber creates temporary files for the calculation, and they should not overwrite each other when executing in parallel, create a temporary folder following the molecule InChIKey, 'cd' into it and run the computation.
@@ -1115,7 +1000,7 @@ def sybyl_mol2_from_pdb(inchi_key,charge,temp_dir):
     # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
     antechamber_path = shutil.which('antechamber')
     try: 
-        antechamber_command = f'cd {antechamber_temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge} -nc {net_charge} -at sybyl -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
+        antechamber_command = f'cd {antechamber_temp_folder} && {antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c {charge_method} -nc {net_charge} -at sybyl -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
         subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
 
         # Once computation finished, delete the ligand temporary folder
@@ -1128,6 +1013,25 @@ def sybyl_mol2_from_pdb(inchi_key,charge,temp_dir):
         
     return output_file, output_tar_file
 
+def sybyl_mol2_from_pdb_file(pdb_file):
+    
+    output_file = pdb_file.replace(".pdb","_sybyl.mol2")
+        
+    net_charge = compute_charge_from_pdb(pdb_file)
+    
+    print(output_file)
+    antechamber_path = shutil.which('antechamber')
+    
+    antechamber_command = f'{antechamber_path} -i {pdb_file} -fi pdb -o {output_file} -fo mol2 -c gas -nc {net_charge} -at sybyl -pf y' # The 'sybyl' atom type convention is used for compatibility with RDKit
+    
+    print(antechamber_command)
+    try:
+        subprocess.run(antechamber_command, shell=True, capture_output=True, text=True)
+        print("Finished")
+    except Exception as error:
+        print(error)
+        print("ERRROR")
+    
 def compute_charge_from_pdb(pdb_file):
     mol = Chem.MolFromPDBFile(pdb_file, removeHs=False) 
     
@@ -1153,27 +1057,96 @@ def rename_sybyl_to_gaff_mol2(row,db,table_name,temp_dir,atom_types_dict):
     
     return mol2_gaff_file, output_tar_file
     
-def compute_and_store_pdbqt(row,db,table_name,temp_dir):
+def compute_and_store_pdbqt(row, db, table_name, temp_dir, pdbqt_method, charge_method):
     try:
-                      
         
         # Prepare and store the corresponding .pdbqt file - Alternative with timeout
-        tar_pdbqt_file = pdbqt_from_mol2(f"{temp_dir}/{row['inchi_key']}_sybyl.mol2")
+        mol2_file = f"{temp_dir}/{row['inchi_key']}_sybyl.mol2"
+        
+        tar_pdbqt_file = pdbqt_from_mol2(mol2_file, temp_dir, pdbqt_method, charge_method)
         
         # Prepare and store the corresponding .pdbqt file
-        #tar_pdbqt_file = general_functions.timeout_function(pdbqt_from_mol2,(f"{temp_dir}/{row['inchi_key']}_sybyl.mol2"),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'pdbqt_from_mol2' computation"])
-        
-        
         store_file_as_blob(db,table_name,'pdbqt_file',tar_pdbqt_file,row)
     
         # Store the resulting file
         #store_string_in_column(db,table_name,'pdbqt_file',tar_pdbqt_file,row)
     
-    
     except Exception as error:
         fail_message = f"Failed at .pdbqt molecule computation step - Mol id: {row['id']}"
         general_functions.write_failed_smiles_to_db(row["SMILES"],db,table_name,fail_message)    
+
+def pdbqt_from_mol2(mol2_file, temp_dir, pdbqt_method, charge_method):
+    # Load the corresponding .mol2 file 
+    file_prefix = mol2_file.split('/')[-1].replace('_sybyl.mol2','')
     
+    if pdbqt_method == "meeko":
+        pdbqt_outfile = f'{temp_dir}/{file_prefix}_tmp.pdbqt'
+        atoms_dict = create_meeko_atoms_dict()
+        if charge_method == "gas":
+            mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="gasteiger", add_atom_types=atoms_dict)
+        elif charge_method == "bcc-ml":
+            mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="espaloma", add_atom_types=atoms_dict)
+        
+        create_meeko_pdbqt_string(mol2_file, pdbqt_outfile, mk_prep)
+        apply_rename = 1
+        
+    elif pdbqt_method == "prepare_ligand_script":
+        # prepare_ligand will use the .pdb file, so we need to convert first the .mol2 into .pdb
+        pdf_file = mol2_file.replace("_sybyl.mol2",".pdb")
+        try:
+            pdbqt_outfile = f'{temp_dir}/{file_prefix}.pdbqt'
+            #execute_prep_ligand_script_pdbqt(mol2_file, pdbqt_outfile, temp_dir)
+            execute_prep_ligand_script_pdbqt(pdf_file, pdbqt_outfile, temp_dir)
+            apply_rename = 0
+            renamed_pdbqt_file = pdbqt_outfile
+        
+        except Exception as error:
+            print(error)
+    else:
+        pdbqt_outfile = f'{temp_dir}/{file_prefix}_tmp.pdbqt'
+        atoms_dict = create_meeko_atoms_dict()
+        mk_prep = MoleculePreparation(merge_these_atom_types=("H"),charge_model="read", charge_atom_prop="_TriposPartialCharge",add_atom_types=atoms_dict)
+        create_meeko_pdbqt_string(mol2_file, pdbqt_outfile, mk_prep)
+        apply_rename = 1
+    
+    if apply_rename == 1:
+        # In this section, .pdbqt atoms will be renamed to match the original .mol2 file
+        atom_names, atom_ref_coords = get_atom_names_from_mol2(mol2_file)
+        renamed_pdbqt_file = rename_pdbqt_file(pdbqt_outfile,atom_names, atom_ref_coords,file_prefix, temp_dir)
+
+    tar_pdbqt_file = generate_tar_file(renamed_pdbqt_file)
+    
+    return tar_pdbqt_file
+
+def rename_pdbqt_file(target_pdqbt_file, atom_names, atom_ref_coords, file_prefix, temp_dir):
+    #output_file = f"/tmp/{file_prefix}/{file_prefix}.pdbqt"
+    output_file = f"{temp_dir}/{file_prefix}.pdbqt"
+    
+    with open(target_pdqbt_file,'r') as readfile, open(output_file,'w') as writefile:
+        for line in readfile:
+            line_split = line.rstrip().split()
+            if line_split[0] == "ATOM":
+                # Construct a tuple containing (x,y,z) coordinates
+                x_coord = (round(float(line_split[5]),3))
+                y_coord = (round(float(line_split[6]),3))
+                z_coord = (round(float(line_split[7]),3))
+                coords_tuple = (x_coord,y_coord,z_coord)
+                if coords_tuple in atom_ref_coords:
+                    # Get the index of the corresponding coordinates tuple
+                    index = atom_ref_coords.index(coords_tuple)
+                    # Replace the atom name
+                    line_split[2] = atom_names[index]
+                    # Parse a new line be written to the renamed .pdbqt file
+                    column_widths = [9, 4, 4, 8, 6, 7, 8, 8, 6, 6, 10, 3]
+                    # Format the line in accordance to .pdbqt 
+                    formated_line = line_split[0].ljust(column_widths[0]) + line_split[1].ljust(column_widths[1]) + line_split[2].ljust(column_widths[2]) + line_split[3].ljust(column_widths[3]) + line_split[4].ljust(column_widths[4]) + line_split[5].rjust(column_widths[5]) + line_split[6].rjust(column_widths[6]) + line_split[7].rjust(column_widths[7]) + line_split[8].rjust(column_widths[8]) + line_split[9].rjust(column_widths[9]) + line_split[10].rjust(column_widths[10]) + " " + line_split[11].ljust(column_widths[11])
+                    # Write the formatted line to the output file
+                    writefile.write(f"{formated_line} \n")
+            else:
+                writefile.write(line)
+    
+    return output_file
+
 def test_dummy_conformer(smiles,nbr_confs,maxIters):
     mol = Chem.MolFromSmiles(smiles)
     mol_hs = Chem.AddHs(mol)
@@ -2182,3 +2155,104 @@ def round_floats_applymap(df, decimals=2):
         return x
     
     return df.applymap(round_if_float)
+
+def execute_prep_ligand_script_pdbqt(mol2_file, pdbqt_outfile, temp_dir):
+    # Compute .mol2 file
+    prep_ligand_path = shutil.which('prepare_ligand4.py')
+    
+    try: 
+        # Use the prepare_ligand4.py script from AutoDockTools to generate the pdbqt file
+        prepare_ligand_command = f' cd {temp_dir} && {prep_ligand_path} -l {mol2_file} -o {pdbqt_outfile}' 
+        #convention is used for compatibility with RDKit
+        subprocess.run(prepare_ligand_command, shell=True, capture_output=True, text=True)
+    except Exception as error:
+        print("Error executing prepare_ligand4.py script")
+        print(error)
+        
+def create_meeko_pdbqt_string(mol2_file, pdbqt_outfile, mk_prep):
+    try:
+        mol = Chem.MolFromMol2File(mol2_file,removeHs=False)
+    except:
+        print(mol2_file)
+    
+    mol_setup_list = mk_prep(mol)
+    molsetup = mol_setup_list[0]
+
+    pdbqt_string = PDBQTWriterLegacy.write_string(molsetup)
+    
+    with open(pdbqt_outfile,'w') as pdbqt_file:
+        pdbqt_file.write(pdbqt_string[0])
+    
+    
+def compute_bcc_ml_third_party(row,db,table_name,charge_method,temp_dir,atom_types_dict,pdbqt_method):
+    
+    # Compute the bbc-ml charges using the precomputed bbc-ml model - Alternative with timeout
+    charge_array = general_functions.timeout_function(compute_bbc_ml_array,(row["SMILES"],row["inchi_key"],temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'compute_bbc_ml_array' computation"])
+    
+    # Compute the charge using a fake 'gas' model to be replaced computing SYBYL atom types - Alternative with timeout
+    sybyl_mol2_output_file, sybyl_output_tar_file = general_functions.timeout_function(sybyl_mol2_from_pdb,(row["inchi_key"],"gas",temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'sybyl_mol2_from_pdb' computation"])
+    
+    # Replace the charges on the .mol2 files using the precomputed bbc-ml charges
+    sybyl_replaced_mol2_file = general_functions.replace_charge_on_mol2_file(sybyl_mol2_output_file,charge_array)
+    
+    sybyl_new_tar_file = generate_tar_file(sybyl_replaced_mol2_file)
+    
+    # Store the Sybyl like file
+    store_file_as_blob_with_retry(db,table_name,'mol2_file_sybyl',sybyl_new_tar_file,row)
+    
+    # Compute the charge using a fake 'gas' model to be replaced computing GAFF atom types - Alternative with timeout
+    gaff_mol2_output_file, gaff_output_tar_file = general_functions.timeout_function(gaff_mol2_from_pdb,(row["inchi_key"],"gas",temp_dir),timeout=30,on_timeout_args=[row["SMILES"],db,table_name,"Timed out at: 'gaff_mol2_from_pdb' computation"])
+    
+    # Replace the charges on the .mol2 files using the precomputed bbc-ml charges
+    gaff_replaced_mol2_file = general_functions.replace_charge_on_mol2_file(gaff_mol2_output_file,charge_array)
+    gaff_new_tar_file = generate_tar_file(gaff_replaced_mol2_file)
+    
+    # Store the GAFF like file
+    store_file_as_blob_with_retry(db,table_name,'mol2_file_gaff',gaff_new_tar_file,row)
+    
+    # Compute the frcmod file
+    output_tar_frcmod = compute_frcmod_file(gaff_replaced_mol2_file,at="gaff")
+    
+    # Store the frcmod file
+    store_file_as_blob_with_retry(db,table_name,'frcmod_file',output_tar_frcmod,row)
+
+    # Store the charge model used
+    charge_model_description = f"{pdbqt_method}: {charge_method}"
+    store_string_in_column(db,table_name,"charge_model",charge_model_description,row)
+    
+  
+def check_charges_method(charge_method, pdbqt_method):
+      
+    charge_methods = ['bcc-ml','gas', "bcc"]
+    pdbqt_methods = ['meeko','third-party','prepare_ligand_script']
+      
+    if charge_method not in charge_methods:
+        print(f"Charge method '{charge_method}' is not supported. Supported methods are: {charge_methods}. Stopping...")
+        sys.exit()
+    
+    if pdbqt_method not in pdbqt_methods:
+        print(f"PDBQT method '{pdbqt_method}' is not supported. Supported methods are: {pdbqt_methods}. Stopping...")
+        sys.exit()
+        
+        
+def store_file_as_blob_with_retry(db,table_name,colname,file,row,max_retries=50):
+    
+    for attempt in range(max_retries):
+        try:
+            conn = tidyscreen.connect_to_db(db)
+            conn.execute('PRAGMA journal_mode=WAL;') # Enable WAL mode for better concurrency
+            cursor = conn.cursor()
+            id = row['id']
+            # Will store the '.pdb' file as a blob object into the database
+            cursor.execute(f"UPDATE {table_name} SET {colname} = ? WHERE id = {id};",(file,))
+            conn.commit()
+            conn.close()
+            break  # Exit the loop if successful
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                time.sleep(5)
+            else:
+                raise
+            
+    else:
+        raise Exception("Failed to write after several retries.")

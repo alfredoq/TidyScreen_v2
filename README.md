@@ -21,7 +21,7 @@ $ conda activate tidyscreen
 $ pip install git+https://github.com/alfredoq/TidyScreen_v2
 
 # Next, we will install several accesory packages required by TidyScreen
-$ conda install -c conda-forge espaloma_charge chemicalite
+$ conda install -c conda-forge ambertools==23.6 espaloma espaloma_charge chemicalite
 
 ```
 &nbsp;
@@ -45,7 +45,6 @@ $ pip install git+https://github.com/forlilab/Meeko@develop
 
 - [*AutoDock-GPU*](https://github.com/ccsb-scripps/AutoDock-GPU): TidyScreen has been prepared to work in conjunction with AutoDock-GPU, which has been developed in the [ForliLab](https://forlilab.org/) at Scripps Research Institute. We acknowledge Stefano Forli, Diogo Santos-Martins and Andreas Tillack for the kind feedback during TidyScreen development.
 &nbsp;
-- [Amber](https://ambermd.org/) MD engine: this software package is required to confer TidyScreen the capability to prepare and document molecular dynamics simulations of docked poses.
 
 - [Ersilia Models Hub](https://ersilia.gitbook.io/ersilia-book): this package is required if the user intends to use make use of the [Ersilia Open Source Initiative](https://www.ersilia.io/) prediction models as part of chemical space prioritization. To install the hub run the following code within the TidyScreen environment:
 
@@ -59,7 +58,7 @@ $ bentoml # this action will install the BentoML version required by the Ersilia
 
 - [Docker](https://www.docker.com/products/docker-desktop/): Ersilia Models Hub requires a system-wide installation of Docker (container management system). Installation instructions for different operating systems can be found [here](https://docs.docker.com/desktop/setup/install/linux/), while instructions specific for Ubuntu can be found [here](https://docs.docker.com/desktop/setup/install/linux/ubuntu/)
 
-- [Redis server}(https://redis.io/open-source/):
+- [Redis server](https://redis.io/open-source/):
 
 ```bash
 $ sudo apt-get update
