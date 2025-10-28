@@ -58,7 +58,7 @@ $ bentoml # this action will install the BentoML version required by the Ersilia
 
 - [Docker](https://www.docker.com/products/docker-desktop/): Ersilia Models Hub requires a system-wide installation of Docker (container management system). Installation instructions for different operating systems can be found [here](https://docs.docker.com/desktop/setup/install/linux/), while instructions specific for Ubuntu can be found [here](https://docs.docker.com/desktop/setup/install/linux/ubuntu/)
 
-- [Redis server}(https://redis.io/open-source/):
+- [Redis server](https://redis.io/open-source/):
 
 ```bash
 $ sudo apt-get update
