@@ -13,22 +13,15 @@ import os
 
 class DockingAnalysis:
     
-    def __init__(self, project,amberhome=None):
+    def __init__(self, project):
         self.project = project
         self.docking_assays_path = self.project.proj_folders_path["docking"]["docking_assays"]
         self.docking_registers_path = self.project.proj_folders_path["docking"]["docking_registers"]    
         self.docking_params_path = self.project.proj_folders_path["docking"]["params"]    
         self.receptor_models_path = self.project.proj_folders_path["docking"]["receptors"]
         self.ligands_db = self.project.proj_folders_path["chemspace"]['processed_data'] + "/chemspace.db"
+        self.amberhome = os.environ.get('CONDA_PREFIX')
 
-        if amberhome is None:
-            self.amberhome = input("Please, input the AMBERHOME path: ")
-            if self.amberhome is None:
-                print("Error: AMBERHOME environment variable is not set.")
-                sys.exit()
-        else:
-            self.amberhome = amberhome
-    
     def process_docking_assay(self, assay_id, max_poses=10, vmd_path=None, extract_poses=0):
         registries_db = f"{self.docking_registers_path}/docking_registries.db"
         # Check if the 'assay_id' existis in docking registries

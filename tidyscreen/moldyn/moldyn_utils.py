@@ -371,17 +371,17 @@ def apply_ante_MMPBSA(output_path,ligresname,amberhome):
     
     subprocess.run(command, shell=True, capture_output=True, text=True)
 
-def compute_MMPBSA(output_path,traj_input, system_ambertools=0):
+def compute_MMPBSA(output_path,traj_input):
     
-    # This will delete any enviromnent MMPBSA.py to use the system one
-    if system_ambertools == 1:
-        # Check if the MMPBSA.py script is available in the conda environment, if so delete it so as to use the system one
-        conda_prefix = os.environ.get('CONDA_PREFIX')
-        # Path to the file in the bin directory (replace 'my_executable' with your filename)
-        file_path = os.path.join(conda_prefix, 'bin', 'MMPBSA.py')
-        if os.path.isfile(file_path):
-            os.remove(file_path)
-            print(f"Removed MMPBSA.py from conda environment. Using system version instead.")
+    # # This will delete any enviromnent MMPBSA.py to use the system one
+    # if system_ambertools == 1:
+    #     # Check if the MMPBSA.py script is available in the conda environment, if so delete it so as to use the system one
+    #     conda_prefix = os.environ.get('CONDA_PREFIX')
+    #     # Path to the file in the bin directory (replace 'my_executable' with your filename)
+    #     file_path = os.path.join(conda_prefix, 'bin', 'MMPBSA.py')
+    #     if os.path.isfile(file_path):
+    #         os.remove(file_path)
+    #         print(f"Removed MMPBSA.py from conda environment. Using system version instead.")
     
     try: 
         # Get the MMPBSA.py path
