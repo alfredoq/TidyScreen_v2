@@ -42,6 +42,10 @@ pip install --upgrade git+https://github.com/alfredoq/TidyScreen_v2
 ```bash
 $ pip install git+https://github.com/forlilab/Meeko@develop  
 ```
+- [Autodock4](https://forlilab.org/code/): is required to compute docking grids.
+```bash
+$ sudo apt-get install autodock  
+```
 
 - [*AutoDock-GPU*](https://github.com/ccsb-scripps/AutoDock-GPU): TidyScreen has been prepared to work in conjunction with AutoDock-GPU, which has been developed in the [ForliLab](https://forlilab.org/) at Scripps Research Institute. We acknowledge Stefano Forli, Diogo Santos-Martins and Andreas Tillack for the kind feedback during TidyScreen development.
 &nbsp;
