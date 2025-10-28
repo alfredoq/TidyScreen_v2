@@ -45,7 +45,6 @@ $ pip install git+https://github.com/forlilab/Meeko@develop
 
 - [*AutoDock-GPU*](https://github.com/ccsb-scripps/AutoDock-GPU): TidyScreen has been prepared to work in conjunction with AutoDock-GPU, which has been developed in the [ForliLab](https://forlilab.org/) at Scripps Research Institute. We acknowledge Stefano Forli, Diogo Santos-Martins and Andreas Tillack for the kind feedback during TidyScreen development.
 &nbsp;
-- [Amber](https://ambermd.org/) MD engine: this software package is required to confer TidyScreen the capability to prepare and document molecular dynamics simulations of docked poses.
 
 - [Ersilia Models Hub](https://ersilia.gitbook.io/ersilia-book): this package is required if the user intends to use make use of the [Ersilia Open Source Initiative](https://www.ersilia.io/) prediction models as part of chemical space prioritization. To install the hub run the following code within the TidyScreen environment:
 
