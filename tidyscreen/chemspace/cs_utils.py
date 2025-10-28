@@ -643,28 +643,6 @@ def store_file_as_blob(db,table_name,colname,file,row):
     conn.commit()
     conn.close()
 
-def store_file_as_blob_with_retry(db,table_name,colname,file,row,max_retries=50):
-    
-    for attempt in range(max_retries):
-        try:
-            conn = tidyscreen.connect_to_db(db)
-            conn.execute('PRAGMA journal_mode=WAL;') # Enable WAL mode for better concurrency
-            cursor = conn.cursor()
-            id = row['id']
-            # Will store the '.pdb' file as a blob object into the database
-            cursor.execute(f"UPDATE {table_name} SET {colname} = ? WHERE id = {id};",(file,))
-            conn.commit()
-            conn.close()
-            break  # Exit the loop if successful
-        except sqlite3.OperationalError as e:
-            if "database is locked" in str(e):
-                time.sleep(5)
-            else:
-                raise
-            
-    else:
-        raise Exception("Failed to write after several retries.")
-
 def store_string_in_column(db,table_name,colname,string,row):
     conn = tidyscreen.connect_to_db(db)
     cursor = conn.cursor()

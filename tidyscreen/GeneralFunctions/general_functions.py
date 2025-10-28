@@ -190,6 +190,7 @@ def generate_tar_file(file):
     return tar_buffer.getvalue()  # Return TAR file as binary
 
 def sort_table(assay_folder,assay_id,table,column):
+    
     results_db = f"{assay_folder}/assay_{assay_id}.db"
     conn = tidyscreen.connect_to_db(results_db)
     cursor = conn.cursor()
@@ -209,6 +210,41 @@ def sort_table(assay_folder,assay_id,table,column):
     
     conn.commit()
     conn.close()
+
+def sort_table_with_retry(assay_folder,assay_id,table,column):
+    
+    results_db = f"{assay_folder}/assay_{assay_id}.db"
+    conn = tidyscreen.connect_to_db(results_db)
+    cursor = conn.cursor()
+    
+    for attempt in range(10):
+        try:
+            # Replace 'your_table' and 'sort_column' with your table and column names
+            cursor.execute(f"""
+            CREATE TABLE sorted_table AS
+            SELECT * FROM {table}
+            ORDER BY {column};
+            """)
+        
+            # Drop the original table
+            cursor.execute(f"DROP TABLE {table};")
+        
+            # Rename the sorted table to original name
+            cursor.execute(f"ALTER TABLE sorted_table RENAME TO {table};")
+        
+            conn.commit()
+            conn.close()
+            break  # Exit the loop if successful
+        
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                time.sleep(5)
+            else:
+                raise
+        
+    conn.close()
+        
+    
 
 def csv_reader(file):
     """

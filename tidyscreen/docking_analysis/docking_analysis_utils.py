@@ -16,6 +16,7 @@ from tidyscreen.GeneralFunctions import general_functions as general_functions
 import json
 import tempfile
 import subprocess
+import sqlite3
 
 def check_docking_assay(registries_db,assay_id):
     # Check if the 'assay_id' exists in the registers database
@@ -759,3 +760,17 @@ def check_parameters_dict_for_tuple(dict):
                         dict[key1][key2] = tuple(value2)
                         
     return dict
+
+def check_and_delete_existing_fingerprints_tables(assay_results_db, results_table_name):
+    
+    conn = sqlite3.connect(assay_results_db)
+    cursor = conn.cursor()
+    
+    # Delete table if it exists
+    cursor.execute(f"DROP TABLE IF EXISTS {results_table_name}")
+    conn.commit()
+    
+    # Delete table if it exists
+    cursor.execute(f"DROP TABLE IF EXISTS docked_poses")
+    conn.close()
+    

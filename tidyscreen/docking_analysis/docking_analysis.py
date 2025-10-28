@@ -142,7 +142,7 @@ class DockingAnalysis:
     ### Store the docked pose in the results database if required
         if store_docked_poses == 1:
             docking_analysis_utils.store_docked_pose_in_db(assay_folder,assay_id,results_pose_id,ligname,sub_pose,pose_pdb_file)
-        
+    
     ### Delete intermediate files after all calculations if required ###
         
         if clean_files == 1:
@@ -162,6 +162,14 @@ class DockingAnalysis:
         assay_folder = self.docking_assays_path + f'/assay_{assay_id}'
         assay_results_db = f"{assay_folder}/assay_{assay_id}.db"
         
+        if mmgbsa == 1:
+            # Check of the output fingerprints tables exists, and in that case delete them
+            docking_analysis_utils.check_and_delete_existing_fingerprints_tables(assay_results_db, "mmgbsa_fingerprints")
+            
+        if prolif == 1:
+            # Check of the output fingerprints tables exists, and in that case delete them
+            docking_analysis_utils.check_and_delete_existing_fingerprints_tables(assay_results_db, "prolif_fingerprints")
+        
         # Set the main fingerprints folder
         main_fingerprints_folder = f"{assay_folder}/fingerprints_analyses_{results_table_name}"
         
@@ -175,14 +183,6 @@ class DockingAnalysis:
             
             # Add to iteration counter
             iteration += 1
-
-        if mmgbsa == 1:
-            ## Sort the 'mmgbsa_fingerprints' table based on Pose_ID
-            general_functions.sort_table(assay_folder,assay_id,"mmgbsa_fingerprints","Pose_ID")
-            
-        if prolif == 1:
-            ## Sort the 'prolif_fingerprints' table based on Pose_ID
-            general_functions.sort_table(assay_folder,assay_id,"prolif_fingerprints","Pose_ID")
 
         ## Delete the general fingerprint folders if required
         if clean_assay_folder == 1:
