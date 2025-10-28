@@ -21,7 +21,7 @@ $ conda activate tidyscreen
 $ pip install git+https://github.com/alfredoq/TidyScreen_v2
 
 # Next, we will install several accesory packages required by TidyScreen
-$ conda install -c conda-forge espaloma espaloma_charge chemicalite
+$ conda install -c conda-forge ambertools==23.6 espaloma espaloma_charge chemicalite
 
 ```
 &nbsp;
