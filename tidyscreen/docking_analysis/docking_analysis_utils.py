@@ -17,6 +17,7 @@ import json
 import tempfile
 import subprocess
 import sqlite3
+from vmd import molecule
 
 def check_docking_assay(registries_db,assay_id):
     # Check if the 'assay_id' exists in the registers database
@@ -97,7 +98,8 @@ def extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses,vmd_path):
     number_of_poses_to_extract = max_poses
     
     if vmd_path is None:
-        vmd_path = input("Please, input the VMD path: ")
+        #vmd_path = input("Please, input the VMD path: ")
+        vmd_path = "NONE" # The use of system VMD was deprecated in favor of the vmd python module
     
     for index, row in ligands_name_df.iterrows():
         ligname = row['LigName']
@@ -150,8 +152,11 @@ def extract_1_pdb_per_cluster(assay_folder,results_db_file,max_poses,vmd_path):
             
             input_pdb_file = output_file
             output_pdb_file = output_file.replace('.pdb','_vmd.pdb')
+            
             # Read and write the pose with VMD
-            process_with_vmd(input_pdb_file,output_pdb_file, vmd_path)
+            #process_with_vmd(input_pdb_file,output_pdb_file, vmd_path)
+            process_with_vmd_in_env(input_pdb_file,output_pdb_file)
+            
             # Rename the output file to the original one
             os.rename(output_pdb_file, input_pdb_file)
 
@@ -173,6 +178,10 @@ quit
         subprocess.run([vmd_path, '-dispdev', 'text', '-e', tcl_path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     finally:
         os.remove(tcl_path)
+
+def process_with_vmd_in_env(input_pdb_file,output_pdb_file):
+    input_mol = molecule.load("pdb", input_pdb_file)
+    molecule.write(input_mol, "pdb", output_pdb_file)
 
 def get_bash_alias(alias_name):
     # This command sources .bashrc and prints the alias value
