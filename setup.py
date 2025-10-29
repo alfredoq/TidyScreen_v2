@@ -33,7 +33,8 @@ setup(name='tidyscreen',
 	'moldf',
 	'biobb_amber',
 	'importlib_resources',
-        'py3Dmol'
+        'py3Dmol',
+	'sqlite_web'
       ],
       packages=find_packages(),
       keywords='drug-discovery',
