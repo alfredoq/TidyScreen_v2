@@ -21,7 +21,7 @@ $ conda activate tidyscreen
 $ pip install git+https://github.com/alfredoq/TidyScreen_v2
 
 # Next, we will install several accesory packages required by TidyScreen
-$ conda install -c conda-forge ambertools==23.6 espaloma espaloma_charge chemicalite
+$ conda install -c conda-forge ambertools==23.6 espaloma espaloma_charge chemicalite visidata vmd-python
 
 ```
 &nbsp;
@@ -44,7 +44,7 @@ $ pip install git+https://github.com/forlilab/Meeko@develop
 ```
 - [Autodock4](https://forlilab.org/code/): is required to compute docking grids.
 ```bash
-$ sudo apt-get install autodock  
+$ conda install -c bioconda autodock autogrid
 ```
 
 - [*AutoDock-GPU*](https://github.com/ccsb-scripps/AutoDock-GPU): TidyScreen has been prepared to work in conjunction with AutoDock-GPU, which has been developed in the [ForliLab](https://forlilab.org/) at Scripps Research Institute. We acknowledge Stefano Forli, Diogo Santos-Martins and Andreas Tillack for the kind feedback during TidyScreen development.
@@ -65,13 +65,27 @@ $ bentoml # this action will install the BentoML version required by the Ersilia
 - [Redis server](https://redis.io/open-source/):
 
 ```bash
-$ sudo apt-get update
-$ sudo apt-get install redis-server
+$ conda install -c conda-forge redis-server
+# Enable redis-server
 $ sudo systemctl start redis-server
 $ sudo systemctl enable redis-server
 
 # Check that the server is running:
 $ redis-cli ping #It should reply with PONG.
 ```
+
+A simplified installation procedure is to download the [bash installation script](https://github.com/alfredoq/TidyScreen_v2/blob/main/tidyscreen_installation.sh) and execute it as follows:
+
+```bash
+$ chmod 777 tidyscreen_installation.sh
+$ ./tidyscreen_installation.sh
+
+## The creation con dedicated environment named 'tidyscreen' will be accomplished
+
+$ conda activate tidyscreen
+
+# Start working
+```
+
 
 In order to use TidyScreen, users can access the [documentation](https://alfredoq.github.io/TidyScreen_v2_docs_new/) describing the project and specific working examples.
