@@ -21,7 +21,7 @@ $ conda activate tidyscreen
 $ pip install git+https://github.com/alfredoq/TidyScreen_v2
 
 # Next, we will install several accesory packages required by TidyScreen
-$ conda install -c conda-forge ambertools==23.6 espaloma espaloma_charge chemicalite
+$ conda install -c conda-forge ambertools==23.6 espaloma espaloma_charge chemicalite visidata vmd-python
 
 ```
 &nbsp;
@@ -73,5 +73,19 @@ $ sudo systemctl enable redis-server
 # Check that the server is running:
 $ redis-cli ping #It should reply with PONG.
 ```
+
+A simplified installation procedure is to download the [bash installation script](https://github.com/alfredoq/TidyScreen_v2/blob/main/tidyscreen_installation.sh) and execute it as follows:
+
+```bash
+$ chmod 777 tidyscreen_installation.sh
+$ ./tidyscreen_installation.sh
+
+## The creation con dedicated environment named 'tidyscreen' will be accomplished
+
+$ conda activate tidyscreen
+
+# Start working
+```
+
 
 In order to use TidyScreen, users can access the [documentation](https://alfredoq.github.io/TidyScreen_v2_docs_new/) describing the project and specific working examples.
