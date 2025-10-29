@@ -65,7 +65,8 @@ $ bentoml # this action will install the BentoML version required by the Ersilia
 - [Redis server](https://redis.io/open-source/):
 
 ```bash
-$ conda install -c redis-server
+$ conda install -c conda-forge redis-server
+# Enable redis-server
 $ sudo systemctl start redis-server
 $ sudo systemctl enable redis-server
 
