@@ -28,4 +28,8 @@ cd /tmp && git clone https://github.com/ersilia-os/ersilia.git
 
 cd ersilia && conda run -n tidyscreen pip install -e .
 
+# A second environment is needed for certain Autodock Tools functionalities requiring Python 2.7
 
+echo "y" | conda create -n adt python=2.7
+
+echo "y" | conda install -n adt -c insilichem autodocktools-prepare

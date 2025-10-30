@@ -1096,7 +1096,8 @@ def pdbqt_from_mol2(mol2_file, temp_dir, pdbqt_method, charge_method):
         try:
             pdbqt_outfile = f'{temp_dir}/{file_prefix}.pdbqt'
             #execute_prep_ligand_script_pdbqt(mol2_file, pdbqt_outfile, temp_dir)
-            execute_prep_ligand_script_pdbqt(pdf_file, pdbqt_outfile, temp_dir)
+            #execute_prep_ligand_script_pdbqt(pdf_file, pdbqt_outfile, temp_dir)
+            execute_prep_ligand_script_pdbqt_from_env(pdf_file, pdbqt_outfile, temp_dir)
             apply_rename = 0
             renamed_pdbqt_file = pdbqt_outfile
         
@@ -2163,6 +2164,19 @@ def execute_prep_ligand_script_pdbqt(mol2_file, pdbqt_outfile, temp_dir):
     try: 
         # Use the prepare_ligand4.py script from AutoDockTools to generate the pdbqt file
         prepare_ligand_command = f' cd {temp_dir} && {prep_ligand_path} -l {mol2_file} -o {pdbqt_outfile}' 
+        #convention is used for compatibility with RDKit
+        subprocess.run(prepare_ligand_command, shell=True, capture_output=True, text=True)
+    except Exception as error:
+        print("Error executing prepare_ligand4.py script")
+        print(error)
+        
+def execute_prep_ligand_script_pdbqt_from_env(mol2_file, pdbqt_outfile, temp_dir):
+    # Compute .mol2 file
+    prep_ligand_path = shutil.which('prepare_ligand4.py')
+    
+    try: 
+        # Use the prepare_ligand4.py script from AutoDockTools to generate the pdbqt file
+        prepare_ligand_command = f' cd {temp_dir} && conda run -n adt prepare_ligand4.py -l {mol2_file} -o {pdbqt_outfile}' 
         #convention is used for compatibility with RDKit
         subprocess.run(prepare_ligand_command, shell=True, capture_output=True, text=True)
     except Exception as error:

@@ -15,6 +15,21 @@ A core feature common to TidyScreen philosophy is the use of [SQL databases](htt
 ---
 #### Installation
 
+**Suggested installation procedure:** A simplified installation procedure is to download the [bash installation script](https://github.com/alfredoq/TidyScreen_v2/blob/main/tidyscreen_installation.sh) and execute it as follows:
+
+```bash
+$ chmod 777 tidyscreen_installation.sh
+$ ./tidyscreen_installation.sh
+
+## The creation con dedicated environment named 'tidyscreen' will be accomplished
+
+$ conda activate tidyscreen
+
+# Start working
+```
+
+**Step-by-step installation** : Below you will find instruction on how to manually perform all the actions included in the [bash installation script](https://github.com/alfredoq/TidyScreen_v2/blob/main/tidyscreen_installation.sh) in case any specific parameter is required to be modified:
+
 ```bash
 $ conda create -n tidyscreen python=3.12 
 $ conda activate tidyscreen
@@ -74,18 +89,12 @@ $ sudo systemctl enable redis-server
 $ redis-cli ping #It should reply with PONG.
 ```
 
-A simplified installation procedure is to download the [bash installation script](https://github.com/alfredoq/TidyScreen_v2/blob/main/tidyscreen_installation.sh) and execute it as follows:
+-[AutodockTools] ligand preparation scripts: Some actions (i.e. parameterization of ligands for dockings) uses custom scripts that needs to be installed into a separate conda environment named 'adt', and that uses an older Python version (2.7). To create that environment and the corresponding tools execute the following commands:
 
 ```bash
-$ chmod 777 tidyscreen_installation.sh
-$ ./tidyscreen_installation.sh
-
-## The creation con dedicated environment named 'tidyscreen' will be accomplished
-
-$ conda activate tidyscreen
-
-# Start working
+$ conda create -n adt python=2.7 
+$ conda activate adt
+$ conda install -c insilichem autodocktools-prepare
 ```
-
 
 In order to use TidyScreen, users can access the [documentation](https://alfredoq.github.io/TidyScreen_v2_docs_new/) describing the project and specific working examples.
