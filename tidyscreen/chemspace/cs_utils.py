@@ -531,8 +531,6 @@ def pdb_from_smiles(smiles,inchi_key,dir,conf_rank):
         # Compute the net charge of the molecule for potential use in antechamber
         net_charge = compute_molecule_net_charge(mol)
         
-        print(pdb_file)
-        
         # Compress the pdb_file
         tar_pdb_file = generate_tar_file(pdb_file)
         
