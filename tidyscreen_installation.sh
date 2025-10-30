@@ -26,7 +26,11 @@ fi
 
 cd /tmp && git clone https://github.com/ersilia-os/ersilia.git
 
-cd ersilia && conda run -n tidyscreen pip install -e .
+cd ersilia && conda run -n tidyscreen pip install -e . 
+
+# Execute BentoML for the environment to retrieve the custom installation
+
+conda run -n tidyscreen bentoml
 
 # A second environment is needed for certain Autodock Tools functionalities requiring Python 2.7
 

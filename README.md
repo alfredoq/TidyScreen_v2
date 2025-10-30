@@ -81,12 +81,6 @@ $ bentoml # this action will install the BentoML version required by the Ersilia
 
 ```bash
 $ conda install -c conda-forge redis-server
-# Enable redis-server
-$ sudo systemctl start redis-server
-$ sudo systemctl enable redis-server
-
-# Check that the server is running:
-$ redis-cli ping #It should reply with PONG.
 ```
 
 -[AutodockTools] ligand preparation scripts: Some actions (i.e. parameterization of ligands for dockings) uses custom scripts that needs to be installed into a separate conda environment named 'adt', and that uses an older Python version (2.7). To create that environment and the corresponding tools execute the following commands:
