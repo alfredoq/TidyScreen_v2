@@ -94,7 +94,7 @@ $ redis-cli ping #It should reply with PONG.
 ```bash
 $ conda create -n adt python=2.7 
 $ conda activate adt
-$ conda install -c josan_bcn autodocktools-prepare
+$ conda install -c insilichem autodocktools-prepare
 ```
 
 In order to use TidyScreen, users can access the [documentation](https://alfredoq.github.io/TidyScreen_v2_docs_new/) describing the project and specific working examples.
