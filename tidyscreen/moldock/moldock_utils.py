@@ -673,7 +673,8 @@ def prepare_pdqbt_file(mol2_file):
     prepare_receptor_path = shutil.which('prepare_receptor4.py')
     
     # Compute mol2 with Sybyl Atom Types - for compatibility with RDKit and Meeko
-    prepare_receptor_command = f'cd {file_path} && {prepare_receptor_path} -r {mol2_file} -C'
+    #prepare_receptor_command = f'cd {file_path} && {prepare_receptor_path} -r {mol2_file} -C'
+    prepare_receptor_command = f'cd {file_path} && conda run -n adt prepare_receptor4.py -r {mol2_file} -C'
     
     # Execute the command
     subprocess.run(prepare_receptor_command, shell=True, capture_output=True, text=True)
