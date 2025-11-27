@@ -592,3 +592,61 @@ class ChemSpace:
         
         else:
             cs_utils.add_columns_to_existing_table(db, table_name, filtered_df, model_id)
+            
+            
+    def compute_inchi_keys_in_table(self, table_name):
+        """
+        Will compute the InChI and InChIKey for all molecules in a given table and store the results in the same table.
+        Args:
+        table_name (str): Name of the table to be processed
+        
+        example:
+            >>> example_project_cs = chemspace.ChemSpace(example_project)
+            >>> example_project_cs.compute_inchi_keys_in_table("ligands_table")
+            This will compute the InChI and InChIKey for all molecules in the "ligands_table" and store the results in the same table.
+        """
+        
+        # Check the presence of the given table
+        db = f"{self.cs_db_path}/chemspace.db"
+        conn = tidyscreen.connect_to_db(db)
+        exists = cs_utils.check_table_presence(conn, table_name)
+        
+        if not exists:
+            print(f"Table '{table_name}' does not exist in the database.")
+            sys.exit(0)
+        
+        # Check if the InChIKey columns already exist in the table - Not required
+        inchikey_exists = cs_utils.check_columns_existence_in_table(conn, table_name, ["inchi_key"])
+        
+        if inchikey_exists:
+            print(f"InChIKey column already exists in table '{table_name}'. No InChI or InChIKey were computed.")
+            sys.exit(0)
+            
+        # Check if the SMILES columns already exist in the table - Required
+        smiles_exists = cs_utils.check_columns_existence_in_table(conn, table_name, ["SMILES"], query='n')
+        
+        if not smiles_exists:
+            print(f"SMILES column not present in table '{table_name}'. No InChI or InChIKey were computed.")
+            sys.exit(0)
+                
+        # Create a df from the target table
+        df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
+        
+        # Initialize pandarallel to process all steps in parallel
+        pandarallel.initialize(progress_bar=True) 
+        # Compute the inchi_key on the df
+        df["inchi_key"] = df.parallel_apply(lambda row: cs_utils.compute_inchi_key_refactored(row,db),axis=1)
+        
+        # Move the last column to be the inchi_key to the second position
+        cols = df.columns.tolist()
+        cols.insert(1, cols.pop(cols.index("inchi_key")))
+        df = df[cols]
+        
+        # Store the final df into de database
+        general_functions.save_df_to_db(self.cs_database_file,df,table_name)
+                 
+        
+         
+
+        
+        

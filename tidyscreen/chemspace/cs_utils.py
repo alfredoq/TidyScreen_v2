@@ -444,7 +444,7 @@ def create_mols_columns_from_selection(pdb,mol2,pdbqt):
 
     return list_mol_objects_colnames, list_mol_objects_colnames_types
 
-def check_columns_existence_in_table(conn,table_name,columns_list):
+def check_columns_existence_in_table(conn,table_name,columns_list, query="y"):
     cursor = conn.cursor()
     try:
         cursor.execute(f"PRAGMA table_info({table_name})")
@@ -454,7 +454,7 @@ def check_columns_existence_in_table(conn,table_name,columns_list):
     columns = [row[1] for row in cursor.fetchall()]
     # Return True if all items in 'columns_list' already exist as columns in 'table_name'
     #if all(item in columns for item in columns_list):
-    if any(item in columns for item in columns_list):
+    if any(item in columns for item in columns_list) and query == "y":
         print(f"The columns: {columns_list} already exist in '{table_name}'.")
         response = input("Do you want to delete these columns and continue? (y/n): ")
         if response.lower() == 'y':
@@ -480,6 +480,9 @@ def check_columns_existence_in_table(conn,table_name,columns_list):
         else:
             print("Stopping as requested by user.")
             sys.exit()
+            
+    if any(item in columns for item in columns_list) and query == "n":
+        return True
 
 def append_ligand_mols_blob_object_to_table(db,table_name,row,charge,pdb,mol2_sybyl,mol2_gaff2,pdbqt,temp_dir):
     

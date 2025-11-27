@@ -283,7 +283,7 @@ def check_table_presence(conn,table_name):
         #print(f"Table '{table_name}' DOES NOT exists.")
         return 0
 
-def save_df_to_db(db,df,table_name):
+def save_df_to_db(db, df, table_name):
     conn = tidyscreen.connect_to_db(db)
     exists = check_table_presence(conn,table_name)
 
