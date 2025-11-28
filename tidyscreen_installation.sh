@@ -8,7 +8,7 @@ conda run -n tidyscreen pip install git+https://github.com/alfredoq/TidyScreen_v
 
 echo "Installing Dependencies"
 
-echo "y" | conda install -n tidyscreen -c conda-forge ambertools==23.6 espaloma espaloma_charge chemicalite visidata vmd-python
+echo "y" | conda install -n tidyscreen -c conda-forge ambertools==23.6 espaloma espaloma_charge chemicalite visidata vmd-python vina
 
 conda run -n tidyscreen pip install git+https://github.com/forlilab/Meeko@develop
 
