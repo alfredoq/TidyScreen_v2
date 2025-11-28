@@ -593,7 +593,6 @@ class ChemSpace:
         else:
             cs_utils.add_columns_to_existing_table(db, table_name, filtered_df, model_id)
             
-            
     def compute_inchi_keys_in_table(self, table_name):
         """
         Will compute the InChI and InChIKey for all molecules in a given table and store the results in the same table.

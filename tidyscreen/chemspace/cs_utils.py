@@ -2197,8 +2197,7 @@ def create_meeko_pdbqt_string(mol2_file, pdbqt_outfile, mk_prep):
     
     with open(pdbqt_outfile,'w') as pdbqt_file:
         pdbqt_file.write(pdbqt_string[0])
-    
-    
+     
 def compute_bcc_ml_third_party(row,db,table_name,charge_method,temp_dir,atom_types_dict,pdbqt_method):
     
     # Compute the bbc-ml charges using the precomputed bbc-ml model - Alternative with timeout
@@ -2235,7 +2234,6 @@ def compute_bcc_ml_third_party(row,db,table_name,charge_method,temp_dir,atom_typ
     charge_model_description = f"{pdbqt_method}: {charge_method}"
     store_string_in_column(db,table_name,"charge_model",charge_model_description,row)
     
-  
 def check_charges_method(charge_method, pdbqt_method):
       
     charge_methods = ['bcc-ml','gas', "bcc"]
@@ -2248,8 +2246,7 @@ def check_charges_method(charge_method, pdbqt_method):
     if pdbqt_method not in pdbqt_methods:
         print(f"PDBQT method '{pdbqt_method}' is not supported. Supported methods are: {pdbqt_methods}. Stopping...")
         sys.exit()
-        
-        
+            
 def store_file_as_blob_with_retry(db,table_name,colname,file,row,max_retries=50):
     
     for attempt in range(max_retries):
